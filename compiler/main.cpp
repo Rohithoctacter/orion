@@ -289,20 +289,28 @@ public:
     std::string emitMov(const std::string& src, const std::string& dst) {
         bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
         if (isWindows) {
-            return "    mov " + dst + ", " + src + "  ; Windows Intel syntax\n";
+            return "    mov " + dst + ", " + src + "\n";  // Intel syntax: dst, src
         } else {
             return "    mov " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
         }
     }
     
-    std::string emitPush(const std::string& reg) {
+    // Platform-aware address loading helper  
+    std::string emitLoadAddress(const std::string& dstReg, const std::string& label) {
         bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        return "    push " + (isWindows ? reg : "%" + reg) + "\n";
+        if (isWindows) {
+            return "    lea " + getRegisterName(dstReg) + ", [rip + " + label + "]\n";  // GAS Intel syntax
+        } else {
+            return "    leaq " + label + "(%rip), " + getRegisterName(dstReg) + "\n";
+        }
+    }
+    
+    std::string emitPush(const std::string& reg) {
+        return "    push " + getRegisterName(reg) + "\n";
     }
     
     std::string emitPop(const std::string& reg) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        return "    pop " + (isWindows ? reg : "%" + reg) + "\n";
+        return "    pop " + getRegisterName(reg) + "\n";
     }
     
     std::string emitCall(const std::string& func) {
@@ -354,14 +362,56 @@ public:
     std::string getArgumentRegister(int argIndex) {
         auto argRegs = backend->getArgumentRegisters();
         if (argIndex < static_cast<int>(argRegs.size())) {
-            return argRegs[argIndex];
+            // Normalize register name for current platform syntax
+            std::string reg = argRegs[argIndex];
+            // Remove % prefix if present since getRegisterName will add it correctly
+            if (reg[0] == '%') {
+                reg = reg.substr(1);
+            }
+            return getRegisterName(reg);
         }
         // For additional arguments beyond register count, use stack
-        return "[rsp+" + std::to_string((argIndex - argRegs.size()) * 8) + "]";
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "[rsp+" + std::to_string((argIndex - argRegs.size()) * 8) + "]";
+        } else {
+            return std::to_string((argIndex - argRegs.size()) * 8) + "(%rsp)";
+        }
     }
     
     std::string getReturnRegister() {
-        return backend->getReturnRegister();
+        std::string reg = backend->getReturnRegister();
+        // Remove % prefix if present since getRegisterName will add it correctly
+        if (reg[0] == '%') {
+            reg = reg.substr(1);
+        }
+        return getRegisterName(reg);
+    }
+    
+    // Helper function to wrap external function calls with Windows shadow space
+    std::string emitExternalCall(const std::string& functionName) {
+        std::ostringstream result;
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        
+        if (isWindows) {
+            // Windows requires shadow space for external calls
+            auto windowsBackend = dynamic_cast<const WindowsX86_64Backend*>(backend.get());
+            if (windowsBackend) {
+                result << windowsBackend->getShadowSpaceSetup();
+            }
+        }
+        
+        result << "    call " << backend->getPlatformSymbol(functionName) << "\n";
+        
+        if (isWindows) {
+            // Cleanup shadow space
+            auto windowsBackend = dynamic_cast<const WindowsX86_64Backend*>(backend.get());
+            if (windowsBackend) {
+                result << windowsBackend->getShadowSpaceCleanup();
+            }
+        }
+        
+        return result.str();
     }
     
     void visit(Program& node) override {
@@ -415,9 +465,9 @@ public:
                 std::string labelName = (funcName == "main") ? "fn_main" : funcName;
                 
                 funcsAsm << "\n" << labelName << ":\n";
-                funcsAsm << "    push %rbp\n";
-                funcsAsm << "    mov %rsp, %rbp\n";
-                funcsAsm << "    sub $64, %rsp  # Allocate stack space for local variables\n";
+                funcsAsm << emitPush("rbp");
+                funcsAsm << emitMov(getRegisterName("rsp"), getRegisterName("rbp"));
+                funcsAsm << backend->getStackReservation(64);
                 
                 // Save current state and enter function scope
                 bool wasInFunction = inFunction;
@@ -433,7 +483,8 @@ public:
                 stackOffset = 0;
                 
                 // Set up parameters - move from calling convention registers to stack
-                const std::string callingConventionRegs[] = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+                // Use platform-specific calling convention from backend
+                auto callingConventionRegs = backend->getArgumentRegisters();
                 
                 funcsAsm << "    # Setting up function parameters for " << funcName << "\n";
                 for (size_t i = 0; i < func->parameters.size() && i < 6; i++) {
@@ -452,8 +503,10 @@ public:
                     localVariables[param.name] = paramInfo;
                     
                     // Move parameter from register to stack
-                    funcsAsm << "    mov " << callingConventionRegs[i] << ", -" << stackOffset 
-                             << "(%rbp)  # Parameter " << param.name << " (type: " << paramInfo.type << ")\n";
+                    std::string sourceReg = callingConventionRegs[i];
+                    if (sourceReg[0] == '%') sourceReg = sourceReg.substr(1);  // Remove % if present
+                    funcsAsm << emitMov(getRegisterName(sourceReg), backend->getMemoryOperand("rbp", -stackOffset))
+                             << "  # Parameter " << param.name << " (type: " << paramInfo.type << ")\n";
                 }
                 
                 // Redirect assembly output to funcsAsm for function body generation
@@ -477,8 +530,8 @@ public:
                 assembly << currentAssembly;
                 
                 // Function epilogue - user functions should return to caller
-                funcsAsm << "    add $64, %rsp  # Restore stack space\n";
-                funcsAsm << "    pop %rbp\n";
+                funcsAsm << emitAdd(getImmediate("64"), getRegisterName("rsp"));  // Restore stack space
+                funcsAsm << emitPop("rbp");
                 funcsAsm << "    ret\n";
                 
                 // Restore previous state
@@ -532,7 +585,8 @@ public:
         assembly << "    # Function prologue: setting up parameters\n";
         
         // Register each parameter as a local variable with proper stack slot
-        const std::string callingConventionRegs[] = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+        // Use platform-specific calling convention from backend
+        auto callingConventionRegs = backend->getArgumentRegisters();
         
         for (size_t i = 0; i < func->parameters.size(); i++) {
             const auto& param = func->parameters[i];
@@ -551,7 +605,10 @@ public:
             // Move parameter value from calling convention register to stack slot
             if (i < 6) {
                 // First 6 parameters are passed in registers
-                assembly << "    mov " << callingConventionRegs[i] << ", -" << paramInfo.stackOffset << "(%rbp)  # param " << param.name << " from " << callingConventionRegs[i] << "\n";
+                std::string sourceReg = callingConventionRegs[i];
+                if (sourceReg[0] == '%') sourceReg = sourceReg.substr(1);  // Remove % if present
+                assembly << emitMov(getRegisterName(sourceReg), backend->getMemoryOperand("rbp", -paramInfo.stackOffset))
+                         << "  # param " << param.name << " from " << getRegisterName(sourceReg) << "\n";
             } else {
                 // Additional parameters are passed on stack (simplified - would need proper stack offset calculation)
                 assembly << "    # Note: Parameter " << param.name << " beyond register capacity - would be on stack\n";
@@ -741,7 +798,8 @@ public:
             // Store the result in the pre-allocated variable slot using recorded offset
             VariableInfo* varInfo = lookupVariable(node.name);
             if (varInfo != nullptr) {
-                assembly << "    mov %rax, -" << varInfo->stackOffset << "(%rbp)  # store " << (varInfo->isGlobal ? "global" : "local") << " " << node.name << "\n";
+                assembly << emitMov(getRegisterName("rax"), backend->getMemoryOperand("rbp", -varInfo->stackOffset));
+                assembly << "    # store " << (varInfo->isGlobal ? "global" : "local") << " " << node.name << "\n";
             }
         }
     }
@@ -782,13 +840,13 @@ public:
             auto argExpr = node.arguments[0].get();
             if (auto intLit = dynamic_cast<IntLiteral*>(argExpr)) {
                 assembly << "    mov %rax, %rdi  # int argument\n";
-                assembly << "    call __orion_int_to_string\n";
+                assembly << emitExternalCall("__orion_int_to_string");
             } else if (auto floatLit = dynamic_cast<FloatLiteral*>(argExpr)) {
                 assembly << "    movq %rax, %xmm0  # float argument\n";
-                assembly << "    call __orion_float_to_string\n";
+                assembly << emitExternalCall("__orion_float_to_string");
             } else if (auto boolLit = dynamic_cast<BoolLiteral*>(argExpr)) {
                 assembly << "    mov %rax, %rdi  # bool argument\n";
-                assembly << "    call __orion_bool_to_string\n";
+                assembly << emitExternalCall("__orion_bool_to_string");
             } else if (auto strLit = dynamic_cast<StringLiteral*>(argExpr)) {
                 // String to string is identity - result already in %rax
                 assembly << "    # String to string conversion (identity)\n";
@@ -798,13 +856,13 @@ public:
                 if (varInfo) {
                     if (varInfo->type == "int") {
                         assembly << "    mov %rax, %rdi  # int variable\n";
-                        assembly << "    call __orion_int_to_string\n";
+                        assembly << emitExternalCall("__orion_int_to_string");
                     } else if (varInfo->type == "float") {
                         assembly << "    movq %rax, %xmm0  # float variable\n";
-                        assembly << "    call __orion_float_to_string\n";
+                        assembly << emitExternalCall("__orion_float_to_string");
                     } else if (varInfo->type == "bool") {
                         assembly << "    mov %rax, %rdi  # bool variable\n";
-                        assembly << "    call __orion_bool_to_string\n";
+                        assembly << emitExternalCall("__orion_bool_to_string");
                     } else if (varInfo->type == "string") {
                         // String to string is identity
                         assembly << "    # String variable to string conversion (identity)\n";
@@ -814,14 +872,14 @@ public:
                 // Handle function call arguments to str()
                 if (funcCall->name == "flt") {
                     assembly << "    movq %rax, %xmm0  # flt() result as float\n";
-                    assembly << "    call __orion_float_to_string\n";
+                    assembly << emitExternalCall("__orion_float_to_string");
                 } else if (funcCall->name == "int") {
                     assembly << "    mov %rax, %rdi  # int() result as integer\n";
-                    assembly << "    call __orion_int_to_string\n";
+                    assembly << emitExternalCall("__orion_int_to_string");
                 } else {
                     // Other function calls default to int for now
                     assembly << "    mov %rax, %rdi  # other function result\n";
-                    assembly << "    call __orion_int_to_string\n";
+                    assembly << emitExternalCall("__orion_int_to_string");
                 }
             } else {
                 // For other complex expressions, default to int conversion
@@ -1040,25 +1098,25 @@ public:
                         assembly << "    # Call out() with str() result\n";
                         funcCall->accept(*this);  // This calls str() and puts result in %rax
                         assembly << "    mov %rax, %rsi  # String pointer as argument\n";
-                        assembly << "    mov $format_str, %rdi  # Use string format\n";
+                        assembly << emitLoadAddress("rdi", "format_str");
                         assembly << "    xor %rax, %rax\n";
-                        assembly << "    call printf\n";
+                        assembly << emitExternalCall("printf");
                         return;
                     } else if (funcCall->name == "int") {
                         assembly << "    # Call out() with int() result\n";
                         funcCall->accept(*this);  // This calls int() and puts result in %rax
                         assembly << "    mov %rax, %rsi  # Integer value as argument\n";
-                        assembly << "    mov $format_int, %rdi  # Use integer format\n";
+                        assembly << emitLoadAddress("rdi", "format_int");
                         assembly << "    xor %rax, %rax\n";
-                        assembly << "    call printf\n";
+                        assembly << emitExternalCall("printf");
                         return;
                     } else if (funcCall->name == "flt") {
                         assembly << "    # Call out() with flt() result\n";
                         funcCall->accept(*this);  // This calls flt() and puts result in %rax
                         assembly << "    movq %rax, %xmm0  # Float value to XMM register\n";
-                        assembly << "    mov $format_float, %rdi  # Use float format\n";
+                        assembly << emitLoadAddress("rdi", "format_float");
                         assembly << "    mov $1, %rax  # Number of vector registers used\n";
-                        assembly << "    call printf\n";
+                        assembly << emitExternalCall("printf");
                         return;
                     } else if (funcCall->name == "dtype" && !funcCall->arguments.empty()) {
                         // Handle dtype() call inside out()
@@ -1084,7 +1142,7 @@ public:
                                 assembly << "    mov $" << dtypeLabel << ", %rsi\n";
                                 assembly << "    mov $format_str, %rdi\n";
                                 assembly << "    xor %rax, %rax\n";
-                                assembly << "    call printf\n";
+                                assembly << emitExternalCall("printf");
                             } else {
                                 throw std::runtime_error("Line " + std::to_string(id->line) + ": Error: Undefined variable '" + id->name + "'");
                             }
@@ -1103,8 +1161,8 @@ public:
                 } else if (auto strLit = dynamic_cast<StringLiteral*>(arg.get())) {
                     int index = addStringLiteral(strLit->value);
                     assembly << "    # Call out() with string\n";
-                    assembly << "    mov $str_" << index << ", %rsi\n";
-                    assembly << "    mov $format_str, %rdi\n";
+                    assembly << emitLoadAddress("rsi", "str_" + std::to_string(index));
+                    assembly << emitLoadAddress("rdi", "format_str");
                     assembly << "    xor %rax, %rax\n";
                     assembly << "    call printf\n";
                 } else if (auto id = dynamic_cast<Identifier*>(arg.get())) {
@@ -1129,7 +1187,7 @@ public:
                             assembly << "    xor %rax, %rax\n";
                         }
                         
-                        assembly << "    call printf\n";
+                        assembly << emitExternalCall("printf");
                     } else {
                         throw std::runtime_error("Error: Undefined variable '" + id->name + "'");
                     }
@@ -1261,12 +1319,16 @@ public:
             assembly << "    # User-defined function call: " << node.name << "\n";
             
             // Prepare arguments in calling convention registers
-            const std::string callingConventionRegs[] = {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"};
+            // Use platform-specific calling convention from backend
+            auto callingConventionRegs = backend->getArgumentRegisters();
             
             for (size_t i = 0; i < node.arguments.size() && i < 6; i++) {
                 assembly << "    # Preparing argument " << i << "\n";
                 node.arguments[i]->accept(*this);  // Result in %rax
-                assembly << "    mov %rax, " << callingConventionRegs[i] << "  # Arg " << i << " to " << callingConventionRegs[i] << "\n";
+                std::string targetReg = callingConventionRegs[i];
+                if (targetReg[0] == '%') targetReg = targetReg.substr(1);  // Remove % if present
+                assembly << emitMov(getRegisterName("rax"), getRegisterName(targetReg))
+                         << "  # Arg " << i << " to " << getRegisterName(targetReg) << "\n";
             }
             
             // Generate the function call with correct label name
@@ -1756,7 +1818,8 @@ public:
                         }
                         
                         // Store value to variable directly from %rax
-                        assembly << "    mov %rax, -" << varInfo->stackOffset << "(%rbp)  # store " << id->name << "\n";
+                        assembly << emitMov(getRegisterName("rax"), backend->getMemoryOperand("rbp", -varInfo->stackOffset));
+                        assembly << "    # store " << id->name << "\n";
                     } else {
                         throw std::runtime_error("Error: Left side of assignment must be a variable");
                     }

@@ -43,17 +43,17 @@ extern string_concat_parts
 
 
 fn_main:
-    push %rbp
-    mov %rsp, %rbp
-    sub $64, %rsp  # Allocate stack space for local variables
+    push rbp
+    mov rbp, rsp  ; Windows Intel syntax
+    sub rsp, 96
     # Setting up function parameters for main
     # Call out() with string
     mov $str_0, %rsi
     mov $format_str, %rdi
     xor %rax, %rax
     call printf
-    add $64, %rsp  # Restore stack space
-    pop %rbp
+    add rsp, 64
+    pop rbp
     ret
 main:
     push rbp

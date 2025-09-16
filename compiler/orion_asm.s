@@ -11,8 +11,9 @@ dtype_unknown: .string "datatype: unknown\n"
 str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
-str_0: .string "Hello, Orion!"
+str_0: .string "Windows assembly test!"
 
+.intel_syntax noprefix
 .section .text
 .global main
 .extern printf
@@ -43,24 +44,24 @@ str_0: .string "Hello, Orion!"
 
 
 fn_main:
-    push %rbp
-    mov %rsp, %rbp
-    sub $64, %rsp  # Allocate stack space for local variables
+    push rbp
+    mov rbp, rsp
+    sub rsp, 96
     # Setting up function parameters for main
     # Call out() with string
-    mov $str_0, %rsi
-    mov $format_str, %rdi
+    lea rsi, [rip + str_0]
+    lea rdi, [rip + format_str]
     xor %rax, %rax
     call printf
-    add $64, %rsp  # Restore stack space
-    pop %rbp
+    add rsp, 64
+    pop rbp
     ret
 main:
-    push %rbp
-    mov %rsp, %rbp
-    sub $64, %rsp
+    push rbp
+    mov rbp, rsp
+    sub rsp, 96
     # Function 'main' defined in scope ''
-    mov $0, %rax
-    add $64, %rsp
-    pop %rbp
+    mov rax, 0
+    add rsp, 64
+    pop rbp
     ret

@@ -222,20 +222,20 @@ public:
 class WindowsX86_64Backend : public TargetBackend {
 public:
     std::string getDataSection() const override {
-        return "section .data\n";
+        return ".section .data\n";  // GAS syntax for data section
     }
     
     std::string getTextSection() const override {
-        return "\nsection .text\n";
+        return "\n.intel_syntax noprefix\n.section .text\n";  // Intel syntax for Windows
     }
     
-    // Windows-specific data directives
+    // Windows-specific data directives (GAS syntax)
     std::string getStringDirective(const std::string& label, const std::string& value) const override {
-        return label + ": db '" + value + "', 0\n";  // NASM string with null terminator
+        return label + ": .string \"" + value + "\"\n";  // GAS string directive with null terminator
     }
     
     std::string getQuadDirective(const std::string& label, uint64_t value) const override {
-        return label + ": dq " + std::to_string(value) + "\n";  // NASM 64-bit quad word
+        return label + ": .quad " + std::to_string(value) + "\n";  // GAS 64-bit quad word
     }
     
     std::string getIntDirective(const std::string& label, const std::string& value) const {
@@ -243,11 +243,11 @@ public:
     }
     
     std::string getGlobalDirective(const std::string& symbol) const override {
-        return "global " + symbol + "\n";  // NASM syntax - caller handles platform symbol
+        return ".global " + symbol + "\n";  // GAS syntax - caller handles platform symbol
     }
     
     std::string getExternDirective(const std::string& symbol) const override {
-        return "extern " + symbol + "\n";  // NASM syntax - caller handles platform symbol  
+        return ".extern " + symbol + "\n";  // GAS syntax - caller handles platform symbol  
     }
     
     std::string getPlatformSymbol(const std::string& symbol) const override {
@@ -287,11 +287,11 @@ public:
     
     // Windows calling convention - shadow space management
     std::string getShadowSpaceSetup() const {
-        return "    sub rsp, 32  ; Allocate shadow space\n";
+        return "    sub rsp, 32  # Allocate shadow space\n";
     }
     
     std::string getShadowSpaceCleanup() const {
-        return "    add rsp, 32  ; Clean up shadow space\n";
+        return "    add rsp, 32  # Clean up shadow space\n";
     }
     
     TargetPlatform getPlatform() const override {
@@ -303,7 +303,7 @@ public:
     }
     
     std::string getAssemblyExtension() const override {
-        return ".asm";
+        return ".s";  // Use .s for GAS compatibility
     }
     
     std::string getExecutableExtension() const override {
@@ -313,9 +313,9 @@ public:
     std::string getAssemblerCommand(const std::string& asmFile, 
                                    const std::string& objFile,
                                    const std::string& exeFile) const override {
-        // Use cl.exe (MSVC) or clang for Windows compilation
-        return "nasm -f win64 " + asmFile + " -o temp.obj && "
-               "cl.exe /Fe:" + exeFile + " temp.obj runtime.obj msvcrt.lib";
+        // Use GCC with Intel syntax for cross-platform compatibility
+        // This allows testing Windows assembly on Linux environments
+        return "gcc -masm=intel -m64 -o " + exeFile + " " + asmFile + " runtime.o -lm";
     }
 };
 
