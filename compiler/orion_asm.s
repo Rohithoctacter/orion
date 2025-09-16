@@ -11,7 +11,7 @@ dtype_unknown: .string "datatype: unknown\n"
 str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
-str_0: .string "enter "
+str_0: .string "Hello from Orion!"
 
 .section .text
 .global main
@@ -47,9 +47,8 @@ fn_main:
     mov %rsp, %rbp
     sub $64, %rsp  # Allocate stack space for local variables
     # Setting up function parameters for main
-    mov %rdi, -8(%rbp)  # Parameter a (type: string)
-    # Call out(dtype(a))
-    mov $dtype_string, %rsi
+    # Call out() with string
+    mov $str_0, %rsi
     mov $format_str, %rdi
     xor %rax, %rax
     call printf
@@ -61,17 +60,6 @@ main:
     mov %rsp, %rbp
     sub $64, %rsp
     # Function 'main' defined in scope ''
-    # Variable: a
-    # input() function call
-    mov $str_0, %rdi  # Prompt string
-    call orion_input_prompt  # Display prompt and read input
-    # String address returned in %rax
-    mov %rax, -8(%rbp)  # store global a
-    # User-defined function call: main
-    # Preparing argument 0
-    mov -8(%rbp), %rax  # load global a
-    mov %rax, %rdi  # Arg 0 to %rdi
-    call fn_main
     mov $0, %rax
     add $64, %rsp
     pop %rbp
