@@ -1,0 +1,1 @@
+fn main() { out("Cross-platform test!") }
