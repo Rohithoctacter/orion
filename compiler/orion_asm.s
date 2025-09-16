@@ -11,7 +11,8 @@ dtype_unknown: .string "datatype: unknown\n"
 str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
-str_0: .string "Stack balance test!"
+str_0: .string "Hello, Orion World!"
+str_1: .string "Fast as C, readable as Python!"
 
 .section .text
 .global main
@@ -45,22 +46,29 @@ str_0: .string "Stack balance test!"
 fn_main:
     push %rbp
     mov %rsp, %rbp
-    subq $96, %rsp
+    sub $64, %rsp
     # Setting up function parameters for main
     # Call out() with string
-    leaq str_0(%rip), %rdx
-    leaq format_str(%rip), %rcx
+    leaq str_0(%rip), %rsi
+    leaq format_str(%rip), %rdi
     xor %rax, %rax
     call printf
-    add $96, %rsp
+    # Call out() with string
+    leaq str_1(%rip), %rsi
+    leaq format_str(%rip), %rdi
+    xor %rax, %rax
+    call printf
+    add $64, %rsp
     pop %rbp
     ret
 main:
     push %rbp
     mov %rsp, %rbp
-    subq $96, %rsp
+    sub $64, %rsp
     # Function 'main' defined in scope ''
+    # User-defined function call: main
+    call fn_main
     mov $0, %rax
-    add $96, %rsp
+    add $64, %rsp
     pop %rbp
     ret
