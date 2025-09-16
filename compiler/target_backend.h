@@ -123,11 +123,11 @@ public:
     }
     
     std::string getGlobalDirective(const std::string& symbol) const override {
-        return ".globl " + getPlatformSymbol(symbol) + "\n";
+        return ".globl " + symbol + "\n";  // Don't double-prefix - caller handles platform symbol
     }
     
     std::string getExternDirective(const std::string& symbol) const override {
-        return ".extern " + getPlatformSymbol(symbol) + "\n";
+        return ".extern " + symbol + "\n";  // Don't double-prefix - caller handles platform symbol
     }
     
     std::string getPlatformSymbol(const std::string& symbol) const override {
@@ -187,11 +187,11 @@ public:
     }
     
     std::string getGlobalDirective(const std::string& symbol) const override {
-        return "global " + symbol + "\n";
+        return "global " + symbol + "\n";  // NASM syntax - caller handles platform symbol
     }
     
     std::string getExternDirective(const std::string& symbol) const override {
-        return "extern " + symbol + "\n";
+        return "extern " + symbol + "\n";  // NASM syntax - caller handles platform symbol  
     }
     
     std::string getPlatformSymbol(const std::string& symbol) const override {

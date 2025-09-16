@@ -253,8 +253,8 @@ public:
         
         // Main function (C runtime entry point) - platform specific symbol
         fullAssembly << backend->getPlatformSymbol("main") << ":\n";
-        fullAssembly << "    push " << (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64 ? "rbp" : "%rbp") << "\n";
-        fullAssembly << "    mov " << (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64 ? "rbp, rsp" : "%rsp, %rbp") << "\n";
+        fullAssembly << emitPush("rbp");
+        fullAssembly << emitMov(getRegisterName("rsp"), getRegisterName("rbp"));
         fullAssembly << backend->getStackReservation(64);  // Platform-specific stack reservation
         
         // Program code (top-level statements and calls)
@@ -264,10 +264,9 @@ public:
         // Don't auto-call main function to allow main() to be used like any other function
         
         // Return 0 - platform specific register syntax
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        fullAssembly << "    mov " << (isWindows ? "rax, 0" : "$0, %rax") << "\n";
-        fullAssembly << "    add " << (isWindows ? "rsp, 64" : "$64, %rsp") << "\n";  // Restore stack pointer
-        fullAssembly << "    pop " << (isWindows ? "rbp" : "%rbp") << "\n";
+        fullAssembly << emitMov(getImmediate("0"), getRegisterName("rax"));
+        fullAssembly << emitAdd(getImmediate("64"), getRegisterName("rsp"));  // Restore stack pointer
+        fullAssembly << emitPop("rbp");
         fullAssembly << "    ret\n";
         
         return fullAssembly.str();
@@ -276,6 +275,66 @@ public:
     // Getter method to access the backend
     const TargetBackend* getBackend() const {
         return backend.get();
+    }
+    
+    // Platform-aware instruction emission helpers
+    std::string emitMov(const std::string& src, const std::string& dst) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "    mov " + dst + ", " + src + "\n";  // Intel syntax: dst, src
+        } else {
+            return "    mov " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
+        }
+    }
+    
+    std::string emitPush(const std::string& reg) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        return "    push " + (isWindows ? reg : "%" + reg) + "\n";
+    }
+    
+    std::string emitPop(const std::string& reg) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        return "    pop " + (isWindows ? reg : "%" + reg) + "\n";
+    }
+    
+    std::string emitCall(const std::string& func) {
+        return "    call " + backend->getPlatformSymbol(func) + "\n";
+    }
+    
+    std::string emitAdd(const std::string& src, const std::string& dst) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "    add " + dst + ", " + src + "\n";  // Intel syntax: dst, src
+        } else {
+            return "    add " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
+        }
+    }
+    
+    std::string emitSub(const std::string& src, const std::string& dst) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "    sub " + dst + ", " + src + "\n";  // Intel syntax: dst, src
+        } else {
+            return "    sub " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
+        }
+    }
+    
+    std::string getRegisterName(const std::string& logicalReg) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return logicalReg;  // Intel syntax: no % prefix
+        } else {
+            return "%" + logicalReg;  // AT&T syntax: % prefix
+        }
+    }
+    
+    std::string getImmediate(const std::string& value) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return value;  // Intel syntax: no $ prefix
+        } else {
+            return "$" + value;  // AT&T syntax: $ prefix
+        }
     }
     
     void visit(Program& node) override {
