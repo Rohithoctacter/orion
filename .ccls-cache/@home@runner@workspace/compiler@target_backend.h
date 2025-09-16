@@ -218,24 +218,24 @@ public:
     }
 };
 
-// Windows x86-64 backend using NASM and Win64 calling convention
+// Windows x86-64 backend using AT&T syntax and Win64 calling convention
 class WindowsX86_64Backend : public TargetBackend {
 public:
     std::string getDataSection() const override {
-        return "section .data\n";
+        return ".section .data\n";  // GAS syntax for data section
     }
     
     std::string getTextSection() const override {
-        return "\nsection .text\n";
+        return "\n.section .text\n";  // AT&T syntax for Windows (no Intel directive)
     }
     
-    // Windows-specific data directives
+    // Windows-specific data directives (GAS syntax)
     std::string getStringDirective(const std::string& label, const std::string& value) const override {
-        return label + ": db '" + value + "', 0\n";  // NASM string with null terminator
+        return label + ": .string \"" + value + "\"\n";  // GAS string directive with null terminator
     }
     
     std::string getQuadDirective(const std::string& label, uint64_t value) const override {
-        return label + ": dq " + std::to_string(value) + "\n";  // NASM 64-bit quad word
+        return label + ": .quad " + std::to_string(value) + "\n";  // GAS 64-bit quad word
     }
     
     std::string getIntDirective(const std::string& label, const std::string& value) const {
@@ -243,11 +243,11 @@ public:
     }
     
     std::string getGlobalDirective(const std::string& symbol) const override {
-        return "global " + symbol + "\n";  // NASM syntax - caller handles platform symbol
+        return ".global " + symbol + "\n";  // GAS syntax - caller handles platform symbol
     }
     
     std::string getExternDirective(const std::string& symbol) const override {
-        return "extern " + symbol + "\n";  // NASM syntax - caller handles platform symbol  
+        return ".extern " + symbol + "\n";  // GAS syntax - caller handles platform symbol  
     }
     
     std::string getPlatformSymbol(const std::string& symbol) const override {
@@ -255,12 +255,12 @@ public:
     }
     
     std::vector<std::string> getArgumentRegisters() const override {
-        // Windows x64 calling convention: first 4 args in registers
-        return {"rcx", "rdx", "r8", "r9"};
+        // Windows x64 calling convention: first 4 args in registers (AT&T syntax)
+        return {"%rcx", "%rdx", "%r8", "%r9"};
     }
     
     std::string getReturnRegister() const override {
-        return "rax";
+        return "%rax";
     }
     
     int getStackAlignment() const override {
@@ -271,27 +271,25 @@ public:
         // Windows requires 32 bytes of shadow space + local variables
         int shadowSpace = 32;
         int aligned = ((bytes + shadowSpace + 15) / 16) * 16;
-        return "    sub rsp, " + std::to_string(aligned) + "\n";
+        return "    subq $" + std::to_string(aligned) + ", %rsp\n";
     }
     
-    // Windows-specific memory operand formatting
+    // Windows AT&T syntax memory operand formatting
     std::string getMemoryOperand(const std::string& base, int offset) const override {
         if (offset == 0) {
-            return "[" + base + "]";
-        } else if (offset > 0) {
-            return "[" + base + "+" + std::to_string(offset) + "]";
+            return "(%" + base + ")";
         } else {
-            return "[" + base + std::to_string(offset) + "]";  // offset is negative
+            return std::to_string(offset) + "(%" + base + ")";
         }
     }
     
-    // Windows calling convention - shadow space management
+    // Windows calling convention - shadow space management (AT&T syntax)
     std::string getShadowSpaceSetup() const {
-        return "    sub rsp, 32  ; Allocate shadow space\n";
+        return "    subq $32, %rsp  # Allocate shadow space\n";
     }
     
     std::string getShadowSpaceCleanup() const {
-        return "    add rsp, 32  ; Clean up shadow space\n";
+        return "    addq $32, %rsp  # Clean up shadow space\n";
     }
     
     TargetPlatform getPlatform() const override {
@@ -303,7 +301,7 @@ public:
     }
     
     std::string getAssemblyExtension() const override {
-        return ".asm";
+        return ".s";  // Use .s for GAS compatibility
     }
     
     std::string getExecutableExtension() const override {
@@ -313,9 +311,9 @@ public:
     std::string getAssemblerCommand(const std::string& asmFile, 
                                    const std::string& objFile,
                                    const std::string& exeFile) const override {
-        // Use cl.exe (MSVC) or clang for Windows compilation
-        return "nasm -f win64 " + asmFile + " -o temp.obj && "
-               "cl.exe /Fe:" + exeFile + " temp.obj runtime.obj msvcrt.lib";
+        // Use GCC with AT&T syntax for Windows - compatible with mingw64
+        // This allows clean assembly generation that works directly with GCC
+        return "gcc -m64 -o " + exeFile + " " + asmFile + " runtime.o -lm";
     }
 };
 

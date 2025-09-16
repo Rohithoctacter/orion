@@ -1,1 +1,1 @@
-fn main() { out("Windows assembly test!") }
+fn main() { out("Stack balance test!") }

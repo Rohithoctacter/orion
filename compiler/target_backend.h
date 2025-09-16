@@ -218,7 +218,7 @@ public:
     }
 };
 
-// Windows x86-64 backend using NASM and Win64 calling convention
+// Windows x86-64 backend using AT&T syntax and Win64 calling convention
 class WindowsX86_64Backend : public TargetBackend {
 public:
     std::string getDataSection() const override {
@@ -226,7 +226,7 @@ public:
     }
     
     std::string getTextSection() const override {
-        return "\n.intel_syntax noprefix\n.section .text\n";  // Intel syntax for Windows
+        return "\n.section .text\n";  // AT&T syntax for Windows (no Intel directive)
     }
     
     // Windows-specific data directives (GAS syntax)
@@ -255,12 +255,12 @@ public:
     }
     
     std::vector<std::string> getArgumentRegisters() const override {
-        // Windows x64 calling convention: first 4 args in registers
-        return {"rcx", "rdx", "r8", "r9"};
+        // Windows x64 calling convention: first 4 args in registers (AT&T syntax)
+        return {"%rcx", "%rdx", "%r8", "%r9"};
     }
     
     std::string getReturnRegister() const override {
-        return "rax";
+        return "%rax";
     }
     
     int getStackAlignment() const override {
@@ -271,27 +271,25 @@ public:
         // Windows requires 32 bytes of shadow space + local variables
         int shadowSpace = 32;
         int aligned = ((bytes + shadowSpace + 15) / 16) * 16;
-        return "    sub rsp, " + std::to_string(aligned) + "\n";
+        return "    subq $" + std::to_string(aligned) + ", %rsp\n";
     }
     
-    // Windows-specific memory operand formatting
+    // Windows AT&T syntax memory operand formatting
     std::string getMemoryOperand(const std::string& base, int offset) const override {
         if (offset == 0) {
-            return "[" + base + "]";
-        } else if (offset > 0) {
-            return "[" + base + "+" + std::to_string(offset) + "]";
+            return "(%" + base + ")";
         } else {
-            return "[" + base + std::to_string(offset) + "]";  // offset is negative
+            return std::to_string(offset) + "(%" + base + ")";
         }
     }
     
-    // Windows calling convention - shadow space management
+    // Windows calling convention - shadow space management (AT&T syntax)
     std::string getShadowSpaceSetup() const {
-        return "    sub rsp, 32  # Allocate shadow space\n";
+        return "    subq $32, %rsp  # Allocate shadow space\n";
     }
     
     std::string getShadowSpaceCleanup() const {
-        return "    add rsp, 32  # Clean up shadow space\n";
+        return "    addq $32, %rsp  # Clean up shadow space\n";
     }
     
     TargetPlatform getPlatform() const override {
@@ -313,9 +311,9 @@ public:
     std::string getAssemblerCommand(const std::string& asmFile, 
                                    const std::string& objFile,
                                    const std::string& exeFile) const override {
-        // Use GCC with Intel syntax for cross-platform compatibility
-        // This allows testing Windows assembly on Linux environments
-        return "gcc -masm=intel -m64 -o " + exeFile + " " + asmFile + " runtime.o -lm";
+        // Use GCC with AT&T syntax for Windows - compatible with mingw64
+        // This allows clean assembly generation that works directly with GCC
+        return "gcc -m64 -o " + exeFile + " " + asmFile + " runtime.o -lm";
     }
 };
 
