@@ -11,7 +11,7 @@ dtype_unknown: .string "datatype: unknown\n"
 str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
-str_0: .string "Hello from Orion!"
+str_0: .string "Syntax test"
 
 .section .text
 .global main
