@@ -260,15 +260,8 @@ public:
         // Program code (top-level statements and calls)
         fullAssembly << assembly.str();
         
-        // Call user main function if it exists
-        auto globalScope = functionScopes.find("");
-        if (globalScope != functionScopes.end()) {
-            auto mainFunc = globalScope->second.functions.find("main");
-            if (mainFunc != globalScope->second.functions.end()) {
-                fullAssembly << "    # Call user main function\n";
-                fullAssembly << "    call fn_main\n";
-            }
-        }
+        // Note: User main function should be called explicitly by user code
+        // Don't auto-call main function to allow main() to be used like any other function
         
         // Return 0
         fullAssembly << "    mov $0, %rax\n";
@@ -358,7 +351,8 @@ public:
                     stackOffset += 8;
                     VariableInfo paramInfo;
                     paramInfo.stackOffset = stackOffset;
-                    paramInfo.type = param.type.toString();
+                    // Try to infer parameter type from calling context, default to string for flexibility
+                    paramInfo.type = (param.type.toString() != "unknown") ? param.type.toString() : "string";
                     paramInfo.isGlobal = false;
                     paramInfo.isConstant = false;
                     
@@ -367,7 +361,7 @@ public:
                     
                     // Move parameter from register to stack
                     funcsAsm << "    mov " << callingConventionRegs[i] << ", -" << stackOffset 
-                             << "(%rbp)  # Parameter " << param.name << "\n";
+                             << "(%rbp)  # Parameter " << param.name << " (type: " << paramInfo.type << ")\n";
                 }
                 
                 // Redirect assembly output to funcsAsm for function body generation
