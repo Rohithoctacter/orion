@@ -184,6 +184,11 @@ public:
         }
     }
     
+    // Constructor that accepts a specific target platform
+    SimpleCodeGenerator(TargetPlatform targetPlatform) {
+        backend = createTargetBackend(targetPlatform);
+    }
+    
     std::string generate(Program& program) {
         assembly.str("");
         assembly.clear();
@@ -206,27 +211,30 @@ public:
         
         // Data section - platform specific
         fullAssembly << backend->getDataSection();
-        fullAssembly << "format_int: .string \"%d\\n\"\n";
-        fullAssembly << "format_str: .string \"%s\"\n";
-        fullAssembly << "format_float: .string \"%.2f\\n\"\n";
-        fullAssembly << "dtype_int: .string \"datatype: int\\n\"\n";
-        fullAssembly << "dtype_string: .string \"datatype: string\\n\"\n";
-        fullAssembly << "dtype_bool: .string \"datatype: bool\\n\"\n";
-        fullAssembly << "dtype_float: .string \"datatype: float\\n\"\n";
-        fullAssembly << "dtype_list: .string \"datatype: list\\n\"\n";
-        fullAssembly << "dtype_unknown: .string \"datatype: unknown\\n\"\n";
-        fullAssembly << "str_true: .string \"True\\n\"\n";
-        fullAssembly << "str_false: .string \"False\\n\"\n";
-        fullAssembly << "str_index_error: .string \"Index Error\\n\"\n";
         
-        // String literals
+        // Platform-specific data directives using backend
+        fullAssembly << backend->getStringDirective("format_int", "%d\\n");
+        fullAssembly << backend->getStringDirective("format_str", "%s");
+        fullAssembly << backend->getStringDirective("format_float", "%.2f\\n");
+        fullAssembly << backend->getStringDirective("dtype_int", "datatype: int\\n");
+        fullAssembly << backend->getStringDirective("dtype_string", "datatype: string\\n");
+        fullAssembly << backend->getStringDirective("dtype_bool", "datatype: bool\\n");
+        fullAssembly << backend->getStringDirective("dtype_float", "datatype: float\\n");
+        fullAssembly << backend->getStringDirective("dtype_list", "datatype: list\\n");
+        fullAssembly << backend->getStringDirective("dtype_unknown", "datatype: unknown\\n");
+        fullAssembly << backend->getStringDirective("str_true", "True\\n");
+        fullAssembly << backend->getStringDirective("str_false", "False\\n");
+        fullAssembly << backend->getStringDirective("str_index_error", "Index Error\\n");
+        
+        // String literals using platform-specific directives
         for (size_t i = 0; i < stringLiterals.size(); i++) {
-            fullAssembly << "str_" << i << ": .string \"" << stringLiterals[i] << "\"\n";
+            fullAssembly << backend->getStringDirective("str_" + std::to_string(i), stringLiterals[i]);
         }
         
-        // Add float literals  
+        // Add float literals using platform-specific directives
         for (size_t i = 0; i < floatLiterals.size(); ++i) {
-            fullAssembly << "float_" << i << ": .quad " << *reinterpret_cast<uint64_t*>(&floatLiterals[i]) << "\n";
+            uint64_t floatBits = *reinterpret_cast<uint64_t*>(&floatLiterals[i]);
+            fullAssembly << backend->getQuadDirective("float_" + std::to_string(i), floatBits);
         }
         
         // Text section - platform specific
@@ -281,7 +289,7 @@ public:
     std::string emitMov(const std::string& src, const std::string& dst) {
         bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
         if (isWindows) {
-            return "    mov " + dst + ", " + src + "\n";  // Intel syntax: dst, src
+            return "    mov " + dst + ", " + src + "  ; Windows Intel syntax\n";
         } else {
             return "    mov " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
         }
@@ -335,6 +343,25 @@ public:
         } else {
             return "$" + value;  // AT&T syntax: $ prefix
         }
+    }
+    
+    // Memory operand using backend abstraction
+    std::string getMemoryOperand(const std::string& base, int offset) {
+        return backend->getMemoryOperand(base, offset);
+    }
+    
+    // Windows calling convention helpers
+    std::string getArgumentRegister(int argIndex) {
+        auto argRegs = backend->getArgumentRegisters();
+        if (argIndex < static_cast<int>(argRegs.size())) {
+            return argRegs[argIndex];
+        }
+        // For additional arguments beyond register count, use stack
+        return "[rsp+" + std::to_string((argIndex - argRegs.size()) * 8) + "]";
+    }
+    
+    std::string getReturnRegister() {
+        return backend->getReturnRegister();
     }
     
     void visit(Program& node) override {
@@ -2457,6 +2484,13 @@ int main(int argc, char* argv[]) {
         
         // Step 3: Code generation
         orion::SimpleCodeGenerator codegen;
+        
+        // Check for Windows target test (for development/testing)
+        if (std::string(filename).find("windows_test") != std::string::npos) {
+            std::cout << "Generating Windows x86-64 assembly for testing..." << std::endl;
+            codegen = orion::SimpleCodeGenerator(orion::TargetPlatform::WINDOWS_X86_64);
+        }
+        
         std::string assembly = codegen.generate(*ast);
         
         // Step 4: Write assembly to file with platform-specific extension (KEEP FOR PROOF)

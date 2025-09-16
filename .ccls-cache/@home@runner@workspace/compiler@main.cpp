@@ -1,6 +1,7 @@
 #include "ast.h"
 #include "lexer.h"
 #include "simple_parser.h"
+#include "target_backend.h"
 #include "types.cpp"
 #include <iostream>
 #include <fstream>
@@ -25,6 +26,7 @@ private:
     std::ostringstream funcsAsm;      // For function definitions
     std::vector<std::string> stringLiterals;
     std::vector<double> floatLiterals;
+    std::unique_ptr<TargetBackend> backend; // Target platform backend
     struct VariableInfo {
         int stackOffset;
         std::string type;
@@ -172,6 +174,16 @@ private:
     }
     
 public:
+    // Constructor that accepts a target backend
+    SimpleCodeGenerator(std::unique_ptr<TargetBackend> targetBackend = nullptr) {
+        if (targetBackend) {
+            backend = std::move(targetBackend);
+        } else {
+            // Default to current platform detection
+            backend = createTargetBackend(detectCurrentPlatform());
+        }
+    }
+    
     std::string generate(Program& program) {
         assembly.str("");
         assembly.clear();
@@ -189,11 +201,11 @@ public:
         // Visit program to collect strings and generate code
         program.accept(*this);
         
-        // Generate complete assembly
+        // Generate complete assembly using target backend
         std::ostringstream fullAssembly;
         
-        // Data section
-        fullAssembly << ".section .data\n";
+        // Data section - platform specific
+        fullAssembly << backend->getDataSection();
         fullAssembly << "format_int: .string \"%d\\n\"\n";
         fullAssembly << "format_str: .string \"%s\"\n";
         fullAssembly << "format_float: .string \"%.2f\\n\"\n";
@@ -217,45 +229,33 @@ public:
             fullAssembly << "float_" << i << ": .quad " << *reinterpret_cast<uint64_t*>(&floatLiterals[i]) << "\n";
         }
         
-        // Text section
-        fullAssembly << "\n.section .text\n";
-        fullAssembly << ".global main\n";
-        fullAssembly << ".extern printf\n";
-        fullAssembly << ".extern orion_malloc\n";
-        fullAssembly << ".extern orion_free\n";
-        fullAssembly << ".extern exit\n";
-        fullAssembly << ".extern fmod\n";
-        fullAssembly << ".extern pow\n";
-        fullAssembly << ".extern strcmp\n";
-        // Enhanced list runtime functions
-        fullAssembly << ".extern list_new\n";
-        fullAssembly << ".extern list_from_data\n";
-        fullAssembly << ".extern list_len\n";
-        fullAssembly << ".extern list_get\n";
-        fullAssembly << ".extern list_set\n";
-        fullAssembly << ".extern list_append\n";
-        fullAssembly << ".extern list_pop\n";
-        fullAssembly << ".extern list_insert\n";
-        fullAssembly << ".extern list_concat\n";
-        fullAssembly << ".extern list_repeat\n";
-        fullAssembly << ".extern list_extend\n";
-        fullAssembly << ".extern orion_input\n";
-        fullAssembly << ".extern orion_input_prompt\n";
-        // String conversion and concatenation functions
-        fullAssembly << ".extern int_to_string\n";
-        fullAssembly << ".extern float_to_string\n";
-        fullAssembly << ".extern bool_to_string\n";
-        fullAssembly << ".extern string_to_string\n";
-        fullAssembly << ".extern string_concat_parts\n\n";
+        // Text section - platform specific
+        fullAssembly << backend->getTextSection();
+        fullAssembly << backend->getGlobalDirective(backend->getPlatformSymbol("main"));
+        
+        // Platform-specific external symbol declarations
+        std::vector<std::string> externSymbols = {
+            "printf", "orion_malloc", "orion_free", "exit", "fmod", "pow", "strcmp",
+            "list_new", "list_from_data", "list_len", "list_get", "list_set",
+            "list_append", "list_pop", "list_insert", "list_concat", "list_repeat",
+            "list_extend", "orion_input", "orion_input_prompt",
+            "int_to_string", "float_to_string", "bool_to_string", 
+            "string_to_string", "string_concat_parts"
+        };
+        
+        for (const auto& symbol : externSymbols) {
+            fullAssembly << backend->getExternDirective(backend->getPlatformSymbol(symbol));
+        }
+        fullAssembly << "\n";
         
         // Emit user-defined functions first
         fullAssembly << funcsAsm.str();
         
-        // Main function (C runtime entry point)
-        fullAssembly << "main:\n";
-        fullAssembly << "    push %rbp\n";
-        fullAssembly << "    mov %rsp, %rbp\n";
-        fullAssembly << "    sub $64, %rsp\n";  // Allocate 64 bytes of stack space for variables
+        // Main function (C runtime entry point) - platform specific symbol
+        fullAssembly << backend->getPlatformSymbol("main") << ":\n";
+        fullAssembly << emitPush("rbp");
+        fullAssembly << emitMov(getRegisterName("rsp"), getRegisterName("rbp"));
+        fullAssembly << backend->getStackReservation(64);  // Platform-specific stack reservation
         
         // Program code (top-level statements and calls)
         fullAssembly << assembly.str();
@@ -263,13 +263,78 @@ public:
         // Note: User main function should be called explicitly by user code
         // Don't auto-call main function to allow main() to be used like any other function
         
-        // Return 0
-        fullAssembly << "    mov $0, %rax\n";
-        fullAssembly << "    add $64, %rsp\n";  // Restore stack pointer
-        fullAssembly << "    pop %rbp\n";
+        // Return 0 - platform specific register syntax
+        fullAssembly << emitMov(getImmediate("0"), getRegisterName("rax"));
+        fullAssembly << emitAdd(getImmediate("64"), getRegisterName("rsp"));  // Restore stack pointer
+        fullAssembly << emitPop("rbp");
         fullAssembly << "    ret\n";
         
         return fullAssembly.str();
+    }
+    
+    // Getter method to access the backend
+    const TargetBackend* getBackend() const {
+        return backend.get();
+    }
+    
+    // Platform-aware instruction emission helpers
+    std::string emitMov(const std::string& src, const std::string& dst) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "    mov " + dst + ", " + src + "  ; Windows Intel syntax\n";
+        } else {
+            return "    mov " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
+        }
+    }
+    
+    std::string emitPush(const std::string& reg) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        return "    push " + (isWindows ? reg : "%" + reg) + "\n";
+    }
+    
+    std::string emitPop(const std::string& reg) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        return "    pop " + (isWindows ? reg : "%" + reg) + "\n";
+    }
+    
+    std::string emitCall(const std::string& func) {
+        return "    call " + backend->getPlatformSymbol(func) + "\n";
+    }
+    
+    std::string emitAdd(const std::string& src, const std::string& dst) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "    add " + dst + ", " + src + "\n";  // Intel syntax: dst, src
+        } else {
+            return "    add " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
+        }
+    }
+    
+    std::string emitSub(const std::string& src, const std::string& dst) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return "    sub " + dst + ", " + src + "\n";  // Intel syntax: dst, src
+        } else {
+            return "    sub " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
+        }
+    }
+    
+    std::string getRegisterName(const std::string& logicalReg) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return logicalReg;  // Intel syntax: no % prefix
+        } else {
+            return "%" + logicalReg;  // AT&T syntax: % prefix
+        }
+    }
+    
+    std::string getImmediate(const std::string& value) {
+        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
+        if (isWindows) {
+            return value;  // Intel syntax: no $ prefix
+        } else {
+            return "$" + value;  // AT&T syntax: $ prefix
+        }
     }
     
     void visit(Program& node) override {
@@ -2394,17 +2459,17 @@ int main(int argc, char* argv[]) {
         orion::SimpleCodeGenerator codegen;
         std::string assembly = codegen.generate(*ast);
         
-        // Step 4: Write assembly to file (KEEP FOR PROOF)
-        std::string asmFile = "orion_asm.s";
+        // Step 4: Write assembly to file with platform-specific extension (KEEP FOR PROOF)
+        std::string asmFile = "orion_asm" + codegen.getBackend()->getAssemblyExtension();
         std::ofstream asmOut(asmFile);
         asmOut << assembly;
         asmOut.close();
         
-        // Step 5: Use GCC to assemble and link with runtime (KEEP EXECUTABLE FOR PROOF)
-        std::string exeFile = "orion_exec";
-        std::string gccCommand = "gcc -o " + exeFile + " " + asmFile + " runtime.o -lm";
+        // Step 5: Use platform-specific assembler to assemble and link with runtime
+        std::string exeFile = "orion_exec" + codegen.getBackend()->getExecutableExtension();
+        std::string assemblerCommand = codegen.getBackend()->getAssemblerCommand(asmFile, "", exeFile);
         
-        int result = system(gccCommand.c_str());
+        int result = system(assemblerCommand.c_str());
         if (result != 0) {
             std::cerr << "Error: Failed to assemble program" << std::endl;
             return 1;
