@@ -12,7 +12,11 @@ str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
 str_0: .string "Hello, Orion World!"
-str_1: .string "Fast as C, readable as Python!"
+str_1: .string "Welcome to the fast and readable programming language!"
+str_2: .string "Developer"
+str_3: .string "Hello, "
+str_4: .string "!"
+str_5: .string "Current year: "
 
 .section .text
 .global main
@@ -58,6 +62,44 @@ fn_main:
     leaq format_str(%rip), %rdi
     xor %rax, %rax
     call printf
+    # Variable: name
+    mov $str_2, %rax
+    mov %rax, -8(%rbp)
+    # store local name
+    # Integer binary operation
+    # Integer binary operation
+    mov $str_3, %rax
+    push %rax
+    mov -8(%rbp), %rax  # load local name
+    pop %rbx
+    add %rbx, %rax
+    push %rax
+    mov $str_4, %rax
+    pop %rbx
+    add %rbx, %rax
+    # Call out() with expression result
+    mov %rax, %rsi
+    mov $format_int, %rdi
+    xor %rax, %rax
+    call printf
+    # Variable: year
+    mov $2025, %rax
+    mov %rax, -16(%rbp)
+    # store local year
+    # Integer binary operation
+    mov $str_5, %rax
+    push %rax
+    # str() type conversion function call
+    mov -16(%rbp), %rax  # load local year
+    mov %rax, %rdi  # int variable
+    call __orion_int_to_string
+    pop %rbx
+    add %rbx, %rax
+    # Call out() with expression result
+    mov %rax, %rsi
+    mov $format_int, %rdi
+    xor %rax, %rax
+    call printf
     add $64, %rsp
     pop %rbp
     ret
@@ -66,8 +108,6 @@ main:
     mov %rsp, %rbp
     sub $64, %rsp
     # Function 'main' defined in scope ''
-    # User-defined function call: main
-    call fn_main
     mov $0, %rax
     add $64, %rsp
     pop %rbp
