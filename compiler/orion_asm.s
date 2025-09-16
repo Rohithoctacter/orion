@@ -11,9 +11,9 @@ dtype_unknown: .string "datatype: unknown\n"
 str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
-str_0: .string "Windows assembly test!"
+str_0: .string "Hello, Orion World!"
+str_1: .string "Fast as C, readable as Python!"
 
-.intel_syntax noprefix
 .section .text
 .global main
 .extern printf
@@ -44,24 +44,31 @@ str_0: .string "Windows assembly test!"
 
 
 fn_main:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 96
+    push %rbp
+    mov %rsp, %rbp
+    sub $64, %rsp
     # Setting up function parameters for main
     # Call out() with string
-    lea rsi, [rip + str_0]
-    lea rdi, [rip + format_str]
+    leaq str_0(%rip), %rsi
+    leaq format_str(%rip), %rdi
     xor %rax, %rax
     call printf
-    add rsp, 64
-    pop rbp
+    # Call out() with string
+    leaq str_1(%rip), %rsi
+    leaq format_str(%rip), %rdi
+    xor %rax, %rax
+    call printf
+    add $64, %rsp
+    pop %rbp
     ret
 main:
-    push rbp
-    mov rbp, rsp
-    sub rsp, 96
+    push %rbp
+    mov %rsp, %rbp
+    sub $64, %rsp
     # Function 'main' defined in scope ''
-    mov rax, 0
-    add rsp, 64
-    pop rbp
+    # User-defined function call: main
+    call fn_main
+    mov $0, %rax
+    add $64, %rsp
+    pop %rbp
     ret
