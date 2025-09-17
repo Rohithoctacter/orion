@@ -2523,7 +2523,7 @@ int main(int argc, char* argv[]) {
         orion::SimpleCodeGenerator codegen;
         
         // Check for Windows target test (for development/testing)
-        if (std::string(filename).find("windows_test") != std::string::npos) {
+        if (std::string(filename).find("windows") != std::string::npos) {
             std::cout << "Generating Windows x86-64 assembly for testing..." << std::endl;
             codegen = orion::SimpleCodeGenerator(orion::TargetPlatform::WINDOWS_X86_64);
         }

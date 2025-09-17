@@ -273,7 +273,10 @@ public:
         
         // Return 0 - platform specific register syntax
         fullAssembly << emitMov(getImmediate("0"), getRegisterName("rax"));
-        fullAssembly << emitAdd(getImmediate("64"), getRegisterName("rsp"));  // Restore stack pointer
+        // Calculate the same stack restoration amount as was reserved
+        int shadowSpace = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) ? 32 : 0;
+        int aligned = ((64 + shadowSpace + 15) / 16) * 16;
+        fullAssembly << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack pointer
         fullAssembly << emitPop("rbp");
         fullAssembly << "    ret\n";
         
@@ -285,24 +288,14 @@ public:
         return backend.get();
     }
     
-    // Platform-aware instruction emission helpers
+    // Instruction emission helpers (now always AT&T syntax)
     std::string emitMov(const std::string& src, const std::string& dst) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return "    mov " + dst + ", " + src + "\n";  // Intel syntax: dst, src
-        } else {
-            return "    mov " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
-        }
+        return "    mov " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
     }
     
-    // Platform-aware address loading helper  
+    // Address loading helper (AT&T syntax)
     std::string emitLoadAddress(const std::string& dstReg, const std::string& label) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return "    lea " + getRegisterName(dstReg) + ", [rip + " + label + "]\n";  // GAS Intel syntax
-        } else {
-            return "    leaq " + label + "(%rip), " + getRegisterName(dstReg) + "\n";
-        }
+        return "    leaq " + label + "(%rip), " + getRegisterName(dstReg) + "\n";
     }
     
     std::string emitPush(const std::string& reg) {
@@ -318,39 +311,19 @@ public:
     }
     
     std::string emitAdd(const std::string& src, const std::string& dst) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return "    add " + dst + ", " + src + "\n";  // Intel syntax: dst, src
-        } else {
-            return "    add " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
-        }
+        return "    add " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
     }
     
     std::string emitSub(const std::string& src, const std::string& dst) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return "    sub " + dst + ", " + src + "\n";  // Intel syntax: dst, src
-        } else {
-            return "    sub " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
-        }
+        return "    sub " + src + ", " + dst + "\n";   // AT&T syntax: src, dst
     }
     
     std::string getRegisterName(const std::string& logicalReg) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return logicalReg;  // Intel syntax: no % prefix
-        } else {
-            return "%" + logicalReg;  // AT&T syntax: % prefix
-        }
+        return "%" + logicalReg;  // AT&T syntax: % prefix
     }
     
     std::string getImmediate(const std::string& value) {
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return value;  // Intel syntax: no $ prefix
-        } else {
-            return "$" + value;  // AT&T syntax: $ prefix
-        }
+        return "$" + value;  // AT&T syntax: $ prefix
     }
     
     // Memory operand using backend abstraction
@@ -370,13 +343,8 @@ public:
             }
             return getRegisterName(reg);
         }
-        // For additional arguments beyond register count, use stack
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        if (isWindows) {
-            return "[rsp+" + std::to_string((argIndex - argRegs.size()) * 8) + "]";
-        } else {
-            return std::to_string((argIndex - argRegs.size()) * 8) + "(%rsp)";
-        }
+        // For additional arguments beyond register count, use stack (AT&T syntax)
+        return std::to_string((argIndex - argRegs.size()) * 8) + "(%rsp)";
     }
     
     std::string getReturnRegister() {
@@ -530,7 +498,10 @@ public:
                 assembly << currentAssembly;
                 
                 // Function epilogue - user functions should return to caller
-                funcsAsm << emitAdd(getImmediate("64"), getRegisterName("rsp"));  // Restore stack space
+                // Calculate the same stack restoration amount as was reserved  
+                int shadowSpace = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) ? 32 : 0;
+                int aligned = ((64 + shadowSpace + 15) / 16) * 16;
+                funcsAsm << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack space
                 funcsAsm << emitPop("rbp");
                 funcsAsm << "    ret\n";
                 
@@ -1139,8 +1110,8 @@ public:
                                 } else {
                                     dtypeLabel = "dtype_unknown";
                                 }
-                                assembly << "    mov $" << dtypeLabel << ", %rsi\n";
-                                assembly << "    mov $format_str, %rdi\n";
+                                assembly << "    mov $" << dtypeLabel << ", " << getArgumentRegister(1) << "\n";
+                                assembly << "    mov $format_str, " << getArgumentRegister(0) << "\n";
                                 assembly << "    xor %rax, %rax\n";
                                 assembly << emitExternalCall("printf");
                             } else {
@@ -1161,8 +1132,11 @@ public:
                 } else if (auto strLit = dynamic_cast<StringLiteral*>(arg.get())) {
                     int index = addStringLiteral(strLit->value);
                     assembly << "    # Call out() with string\n";
-                    assembly << emitLoadAddress("rsi", "str_" + std::to_string(index));
-                    assembly << emitLoadAddress("rdi", "format_str");
+                    // Get register names without % prefix for emitLoadAddress
+                    std::string reg1 = getArgumentRegister(1).substr(1); // Remove % prefix
+                    std::string reg0 = getArgumentRegister(0).substr(1); // Remove % prefix
+                    assembly << emitLoadAddress(reg1, "str_" + std::to_string(index));
+                    assembly << emitLoadAddress(reg0, "format_str");
                     assembly << "    xor %rax, %rax\n";
                     assembly << "    call printf\n";
                 } else if (auto id = dynamic_cast<Identifier*>(arg.get())) {
@@ -1170,20 +1144,20 @@ public:
                     auto it = lookupVariable(id->name);
                     if (it != nullptr) {
                         assembly << "    # Call out() with variable: " << id->name << " (type: " << it->type << ")\n";
-                        assembly << "    mov -" << it->stackOffset << "(%rbp), %rsi\n";
+                        assembly << "    mov -" << it->stackOffset << "(%rbp), " << getArgumentRegister(1) << "\n";
                         
                         if (it->type == "int") {
-                            assembly << "    mov $format_int, %rdi\n";
+                            assembly << "    mov $format_int, " << getArgumentRegister(0) << "\n";
                             assembly << "    xor %rax, %rax\n";
                         } else if (it->type == "bool") {
-                            assembly << "    mov $format_str, %rdi\n";
+                            assembly << "    mov $format_str, " << getArgumentRegister(0) << "\n";
                             assembly << "    xor %rax, %rax\n";
                         } else if (it->type == "float") {
                             assembly << "    movq -" << it->stackOffset << "(%rbp), %xmm0\n";  // Load float into XMM register  
-                            assembly << "    mov $format_float, %rdi\n";
+                            assembly << "    mov $format_float, " << getArgumentRegister(0) << "\n";
                             assembly << "    mov $1, %rax\n";  // Number of vector registers used
                         } else {
-                            assembly << "    mov $format_str, %rdi\n";
+                            assembly << "    mov $format_str, " << getArgumentRegister(0) << "\n";
                             assembly << "    xor %rax, %rax\n";
                         }
                         
@@ -1194,16 +1168,16 @@ public:
                 } else if (auto boolLit = dynamic_cast<BoolLiteral*>(arg.get())) {
                     // Boolean literal - output as string
                     assembly << "    # Call out() with boolean literal\n";
-                    assembly << "    mov $" << (boolLit->value ? "str_true" : "str_false") << ", %rsi\n";
-                    assembly << "    mov $format_str, %rdi\n";
+                    assembly << "    mov $" << (boolLit->value ? "str_true" : "str_false") << ", " << getArgumentRegister(1) << "\n";
+                    assembly << "    mov $format_str, " << getArgumentRegister(0) << "\n";
                     assembly << "    xor %rax, %rax\n";
                     assembly << "    call printf\n";
                 } else if (auto interpolated = dynamic_cast<InterpolatedString*>(arg.get())) {
                     // Handle interpolated string - evaluate it and treat result as string
                     assembly << "    # Call out() with interpolated string\n";
                     arg->accept(*this);  // This calls our InterpolatedString visitor
-                    assembly << "    mov %rax, %rsi  # String pointer from interpolation result\n";
-                    assembly << "    mov $format_str, %rdi  # Use string format\n";
+                    assembly << "    mov %rax, " << getArgumentRegister(1) << "  # String pointer from interpolation result\n";
+                    assembly << "    mov $format_str, " << getArgumentRegister(0) << "  # Use string format\n";
                     assembly << "    xor %rax, %rax\n";
                     assembly << "    call printf\n";
                 } else {
@@ -1236,16 +1210,16 @@ public:
                     
                     if (isComparisonResult) {
                         // Comparison results are string addresses (str_true/str_false)
-                        assembly << "    mov %rax, %rsi\n";
-                        assembly << "    mov $format_str, %rdi\n";  // Use string format for comparison results
+                        assembly << "    mov %rax, " << getArgumentRegister(1) << "\n";
+                        assembly << "    mov $format_str, " << getArgumentRegister(0) << "\n";  // Use string format for comparison results
                         assembly << "    xor %rax, %rax\n";
                     } else if (isFloatResult) {
                         assembly << "    movq %rax, %xmm0  # Load float result into XMM register\n";
-                        assembly << "    mov $format_float, %rdi\n";
+                        assembly << "    mov $format_float, " << getArgumentRegister(0) << "\n";
                         assembly << "    mov $1, %rax  # Number of vector registers used\n";
                     } else {
-                        assembly << "    mov %rax, %rsi\n";
-                        assembly << "    mov $format_int, %rdi\n";  // Use integer format for computed results
+                        assembly << "    mov %rax, " << getArgumentRegister(1) << "\n";
+                        assembly << "    mov $format_int, " << getArgumentRegister(0) << "\n";  // Use integer format for computed results
                         assembly << "    xor %rax, %rax\n";
                     }
                     assembly << "    call printf\n";
