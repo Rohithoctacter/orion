@@ -72,8 +72,15 @@ Thumbs.db
 *.o
 *.obj
 *.exe
+orion
 orion_exec
 proof_executable
+orion_asm.s
+orion_asm.asm
+*.s
+*.asm
+debug_*.txt
+test_output.*
 
 # Test files (optional - keep test examples in examples/ directory)
 test_*.or
