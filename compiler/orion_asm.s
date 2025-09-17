@@ -11,8 +11,6 @@ dtype_unknown: .string "datatype: unknown\n"
 str_true: .string "True\n"
 str_false: .string "False\n"
 str_index_error: .string "Index Error\n"
-str_0: .string "Hello, Orion World!"
-str_1: .string "Fast as C, readable as Python!"
 
 .section .text
 .global main
@@ -42,32 +40,19 @@ str_1: .string "Fast as C, readable as Python!"
 .extern string_to_string
 .extern string_concat_parts
 
-
-fn_main:
-    push %rbp
-    mov %rsp, %rbp
-    sub $64, %rsp
-    # Setting up function parameters for main
-    # Call out() with string
-    leaq str_0(%rip), %rsi
-    leaq format_str(%rip), %rdi
-    xor %rax, %rax
-    call printf
-    # Call out() with string
-    leaq str_1(%rip), %rsi
-    leaq format_str(%rip), %rdi
-    xor %rax, %rax
-    call printf
-    add $64, %rsp
-    pop %rbp
-    ret
 main:
     push %rbp
     mov %rsp, %rbp
     sub $64, %rsp
-    # Function 'main' defined in scope ''
-    # User-defined function call: main
-    call fn_main
+    # Chain assignment
+    mov $5, %rax
+    mov %rax, -8(%rbp)  # a = %rax (type: unknown)
+    mov %rax, -16(%rbp)  # b = %rax (type: unknown)
+    # Call out() with variable: a (type: int)
+    mov -8(%rbp), %rsi
+    mov $format_int, %rdi
+    xor %rax, %rax
+    call printf
     mov $0, %rax
     add $64, %rsp
     pop %rbp
