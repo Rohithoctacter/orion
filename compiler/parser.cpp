@@ -684,6 +684,45 @@ private:
             }
         }
         
+        if (match({TokenType::LBRACKET})) {
+            // Parse list literal: [1, 2, 3]
+            auto listLiteral = std::make_unique<ListLiteral>();
+            
+            // Handle empty list
+            if (match({TokenType::RBRACKET})) {
+                return std::move(listLiteral);
+            }
+            
+            // Parse elements
+            do {
+                listLiteral->elements.push_back(parseExpression());
+            } while (match({TokenType::COMMA}));
+            
+            consume(TokenType::RBRACKET, "Expected ']' after list elements");
+            return std::move(listLiteral);
+        }
+        
+        if (match({TokenType::LBRACE})) {
+            // Parse dictionary literal: {"key": value, "name": "John"}
+            auto dictLiteral = std::make_unique<DictLiteral>();
+            
+            // Handle empty dictionary
+            if (match({TokenType::RBRACE})) {
+                return std::move(dictLiteral);
+            }
+            
+            // Parse key-value pairs
+            do {
+                auto key = parseExpression();
+                consume(TokenType::COLON, "Expected ':' after dictionary key");
+                auto value = parseExpression();
+                dictLiteral->pairs.emplace_back(std::move(key), std::move(value));
+            } while (match({TokenType::COMMA}));
+            
+            consume(TokenType::RBRACE, "Expected '}' after dictionary elements");
+            return std::move(dictLiteral);
+        }
+        
         throw std::runtime_error("Unexpected token in expression: " + peek().value);
     }
     

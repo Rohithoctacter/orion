@@ -133,8 +133,26 @@ private:
         if (!check(TokenType::RPAREN)) {
             do {
                 Token paramName = consume(TokenType::IDENTIFIER, "Expected parameter name");
-                Type paramType = parseType();
-                func->parameters.emplace_back(paramName.value, paramType);
+                
+                Type paramType;
+                bool hasExplicitType = true;
+                
+                // Check for colon-based type annotation: name: Type
+                if (check(TokenType::COLON)) {
+                    advance(); // consume the colon
+                    paramType = parseType();
+                }
+                // Check for direct type (existing syntax): name Type  
+                else if (isTypeToken(peek())) {
+                    paramType = parseType();
+                }
+                // No type specified - implicit typing: name
+                else {
+                    paramType = Type(TypeKind::UNKNOWN);
+                    hasExplicitType = false;
+                }
+                
+                func->parameters.emplace_back(paramName.value, paramType, hasExplicitType);
             } while (match({TokenType::COMMA}));
         }
         
@@ -691,6 +709,10 @@ private:
                type == TokenType::FLOAT32 || type == TokenType::FLOAT64 ||
                type == TokenType::STRING_TYPE || type == TokenType::BOOL_TYPE ||
                type == TokenType::VOID;
+    }
+    
+    bool isTypeToken(const Token& token) const {
+        return isTypeKeyword(token.type) || token.type == TokenType::IDENTIFIER;
     }
     
     Type tokenToType(TokenType type, const std::string& value) {
