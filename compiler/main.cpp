@@ -711,6 +711,10 @@ public:
                     varType = "int";     // len() returns an integer
                 } else if (funcCall->name == "dtype") {
                     varType = "string";  // dtype() returns a string representation
+                } else if (funcCall->name == "int") {
+                    varType = "int";     // int() returns an integer
+                } else if (funcCall->name == "flt") {
+                    varType = "float";   // flt() returns a float
                 } else {
                     // For user-defined functions, we don't know the return type yet
                     // Default to unknown and let runtime handle it
