@@ -922,15 +922,18 @@ public:
             if (auto intLit = dynamic_cast<IntLiteral*>(argExpr)) {
                 assembly << "    mov %rax, %rdi  # int argument\n";
                 assembly << "    call __orion_int_to_float\n";
+                assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
             } else if (auto floatLit = dynamic_cast<FloatLiteral*>(argExpr)) {
                 // Float to float is identity - result already in %rax
                 assembly << "    # Float to float conversion (identity)\n";
             } else if (auto boolLit = dynamic_cast<BoolLiteral*>(argExpr)) {
                 assembly << "    mov %rax, %rdi  # bool argument\n";
                 assembly << "    call __orion_bool_to_float\n";
+                assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
             } else if (auto strLit = dynamic_cast<StringLiteral*>(argExpr)) {
                 assembly << "    mov %rax, %rdi  # string argument\n";
                 assembly << "    call __orion_string_to_float\n";
+                assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
             } else if (auto id = dynamic_cast<Identifier*>(argExpr)) {
                 // Variable - determine type from variable info
                 auto varInfo = lookupVariable(id->name);
@@ -938,20 +941,24 @@ public:
                     if (varInfo->type == "int") {
                         assembly << "    mov %rax, %rdi  # int variable\n";
                         assembly << "    call __orion_int_to_float\n";
+                        assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
                     } else if (varInfo->type == "float") {
                         assembly << "    # Float variable to float conversion (identity)\n";
                     } else if (varInfo->type == "bool") {
                         assembly << "    mov %rax, %rdi  # bool variable\n";
                         assembly << "    call __orion_bool_to_float\n";
+                        assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
                     } else if (varInfo->type == "string") {
                         assembly << "    mov %rax, %rdi  # string variable\n";
                         assembly << "    call __orion_string_to_float\n";
+                        assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
                     }
                 }
             } else {
                 // For complex expressions, default to int to float conversion
                 assembly << "    mov %rax, %rdi  # complex expression argument\n";
                 assembly << "    call __orion_int_to_float  # Default to int to float\n";
+                assembly << "    movq %xmm0, %rax  # Move float result from XMM to RAX\n";
             }
             return;
         }

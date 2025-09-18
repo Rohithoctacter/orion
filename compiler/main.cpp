@@ -2484,6 +2484,54 @@ public:
         // Result is in %rax - no additional handling needed
     }
     
+    void visit(DictLiteral& node) override {
+        assembly << "    # Dictionary literal with " << node.pairs.size() << " key-value pairs\n";
+        
+        // Create dictionary with appropriate initial capacity
+        size_t capacity = node.pairs.size() > 8 ? node.pairs.size() * 2 : 8;
+        assembly << "    mov $" << capacity << ", %rdi  # Initial capacity\n";
+        assembly << "    call dict_new  # Create new dictionary\n";
+        assembly << "    mov %rax, %r12  # Save dict pointer in %r12\n";
+        
+        // Add each key-value pair to the dictionary
+        for (size_t i = 0; i < node.pairs.size(); i++) {
+            assembly << "    # Processing key-value pair " << i << "\n";
+            
+            // Evaluate key
+            assembly << "    push %r12  # Save dict pointer\n";
+            node.pairs[i].key->accept(*this);  // Key value in %rax
+            assembly << "    mov %rax, %r13  # Save key in %r13\n";
+            assembly << "    pop %r12  # Restore dict pointer\n";
+            
+            // Evaluate value  
+            assembly << "    push %r12  # Save dict pointer\n";
+            assembly << "    push %r13  # Save key\n";
+            node.pairs[i].value->accept(*this);  // Value in %rax
+            assembly << "    mov %rax, %r14  # Save value in %r14\n";
+            assembly << "    pop %r13  # Restore key\n";
+            assembly << "    pop %r12  # Restore dict pointer\n";
+            
+            // Call dict_set(dict, key, value)
+            assembly << "    mov %r12, %rdi  # Dict pointer as first argument\n";
+            assembly << "    mov %r13, %rsi  # Key as second argument\n";
+            assembly << "    mov %r14, %rdx  # Value as third argument\n";
+            assembly << "    call dict_set  # Set key-value pair\n";
+        }
+        
+        // Return dictionary pointer
+        assembly << "    mov %r12, %rax  # Dictionary pointer as result\n";
+    }
+    
+    void visit(TupleExpression& node) override {
+        assembly << "    # Tuple expression - simplified (not fully implemented)\n";
+        // For now, just evaluate the first element
+        if (!node.elements.empty()) {
+            node.elements[0]->accept(*this);
+        } else {
+            assembly << "    mov $0, %rax  # Empty tuple\n";
+        }
+    }
+    
     void visit(StructDeclaration& node) override { }
     void visit(EnumDeclaration& node) override { }
 };
