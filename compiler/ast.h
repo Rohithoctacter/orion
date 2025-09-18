@@ -50,6 +50,7 @@ enum class TypeKind {
     ENUM,
     FUNCTION,
     LIST,
+    DICT,
     UNKNOWN
 };
 
@@ -57,17 +58,21 @@ struct Type {
     TypeKind kind;
     std::string name;
     std::unique_ptr<Type> elementType;  // For LIST: element type
+    std::unique_ptr<Type> keyType;      // For DICT: key type
     
     Type(TypeKind k = TypeKind::UNKNOWN, const std::string& n = "") 
-        : kind(k), name(n), elementType(nullptr) {}
+        : kind(k), name(n), elementType(nullptr), keyType(nullptr) {}
     
     Type(TypeKind k, std::unique_ptr<Type> elemType)
-        : kind(k), name(""), elementType(std::move(elemType)) {}
+        : kind(k), name(""), elementType(std::move(elemType)), keyType(nullptr) {}
     
     // Copy constructor
     Type(const Type& other) : kind(other.kind), name(other.name) {
         if (other.elementType) {
             elementType = std::make_unique<Type>(*other.elementType);
+        }
+        if (other.keyType) {
+            keyType = std::make_unique<Type>(*other.keyType);
         }
     }
     
@@ -80,6 +85,11 @@ struct Type {
                 elementType = std::make_unique<Type>(*other.elementType);
             } else {
                 elementType = nullptr;
+            }
+            if (other.keyType) {
+                keyType = std::make_unique<Type>(*other.keyType);
+            } else {
+                keyType = nullptr;
             }
         }
         return *this;
@@ -98,6 +108,9 @@ struct Type {
             case TypeKind::ENUM: return "enum " + name;
             case TypeKind::LIST: 
                 return "list[" + (elementType ? elementType->toString() : "unknown") + "]";
+            case TypeKind::DICT: 
+                return "dict[" + (keyType ? keyType->toString() : "unknown") + ", " + 
+                       (elementType ? elementType->toString() : "unknown") + "]";
             default: return "unknown";
         }
     }
@@ -268,7 +281,33 @@ public:
     }
 };
 
-// Index access: list[0]
+// Dictionary literal: {"key": value, "name": "John"}
+class DictLiteral : public Expression {
+public:
+    struct KeyValuePair {
+        std::unique_ptr<Expression> key;
+        std::unique_ptr<Expression> value;
+        
+        KeyValuePair(std::unique_ptr<Expression> k, std::unique_ptr<Expression> v)
+            : key(std::move(k)), value(std::move(v)) {}
+    };
+    
+    std::vector<KeyValuePair> pairs;
+    
+    DictLiteral(int line = 0, int column = 0) : Expression(line, column) {}
+    void accept(ASTVisitor& visitor) override;
+    std::string toString(int indent = 0) const override {
+        std::string result = std::string(indent, ' ') + "DictLiteral({";
+        for (size_t i = 0; i < pairs.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += pairs[i].key->toString(0) + ": " + pairs[i].value->toString(0);
+        }
+        result += "})";
+        return result;
+    }
+};
+
+// Index access: list[0] or dict[key]
 class IndexExpression : public Expression {
 public:
     std::unique_ptr<Expression> object;  // The list being indexed
@@ -561,6 +600,7 @@ public:
     virtual void visit(FunctionCall& node) = 0;
     virtual void visit(TupleExpression& node) = 0;
     virtual void visit(ListLiteral& node) = 0;
+    virtual void visit(DictLiteral& node) = 0;
     virtual void visit(IndexExpression& node) = 0;
     virtual void visit(VariableDeclaration& node) = 0;
     virtual void visit(FunctionDeclaration& node) = 0;

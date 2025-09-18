@@ -79,6 +79,10 @@ void ListLiteral::accept(ASTVisitor& visitor) {
     visitor.visit(*this);
 }
 
+void DictLiteral::accept(ASTVisitor& visitor) {
+    visitor.visit(*this);
+}
+
 void IndexExpression::accept(ASTVisitor& visitor) {
     visitor.visit(*this);
 }

@@ -268,29 +268,7 @@ std::string WhileStatement::toString(int indent) const {
     return result;
 }
 
-void ForStatement::accept(ASTVisitor& visitor) {
-    visitor.visit(*this);
-}
-
-std::string ForStatement::toString(int indent) const {
-    std::string indentStr(indent, ' ');
-    std::string result = indentStr + "ForStatement:\n";
-    if (init) {
-        result += indentStr + "  Init:\n";
-        result += init->toString(indent + 4);
-    }
-    if (condition) {
-        result += indentStr + "  Condition:\n";
-        result += condition->toString(indent + 4);
-    }
-    if (update) {
-        result += indentStr + "  Update:\n";
-        result += update->toString(indent + 4);
-    }
-    result += indentStr + "  Body:\n";
-    result += body->toString(indent + 4);
-    return result;
-}
+// ForStatement removed - only ForInStatement is supported
 
 void StructDeclaration::accept(ASTVisitor& visitor) {
     visitor.visit(*this);
