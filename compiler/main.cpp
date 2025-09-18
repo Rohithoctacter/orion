@@ -2522,16 +2522,6 @@ public:
         assembly << "    mov %r12, %rax  # Dictionary pointer as result\n";
     }
     
-    void visit(TupleExpression& node) override {
-        assembly << "    # Tuple expression - simplified (not fully implemented)\n";
-        // For now, just evaluate the first element
-        if (!node.elements.empty()) {
-            node.elements[0]->accept(*this);
-        } else {
-            assembly << "    mov $0, %rax  # Empty tuple\n";
-        }
-    }
-    
     void visit(StructDeclaration& node) override { }
     void visit(EnumDeclaration& node) override { }
 };
