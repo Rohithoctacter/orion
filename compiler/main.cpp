@@ -2469,18 +2469,18 @@ public:
     }
     
     void visit(IndexExpression& node) override {
-        assembly << "    # Enhanced index expression with negative indexing support\n";
+        assembly << "    # Type-aware index expression supporting both lists and dictionaries\n";
         
-        // Evaluate the object (list) - result in %rax
+        // Evaluate the object (list or dict) - result in %rax
         node.object->accept(*this);
-        assembly << "    mov %rax, %rdi  # List pointer as first argument\n";
+        assembly << "    mov %rax, %rdi  # Object pointer as first argument\n";
         
-        // Evaluate the index - result in %rax
+        // Evaluate the index/key - result in %rax
         node.index->accept(*this);
-        assembly << "    mov %rax, %rsi  # Index as second argument\n";
+        assembly << "    mov %rax, %rsi  # Index/key as second argument\n";
         
-        // Call runtime function for safe indexing with negative support
-        assembly << "    call list_get  # Get element with bounds checking\n";
+        // Call type-aware runtime function that dispatches to list_get or dict_get
+        assembly << "    call collection_get  # Get element with automatic type dispatch\n";
         // Result is in %rax - no additional handling needed
     }
     

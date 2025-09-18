@@ -17,11 +17,18 @@ void* orion_realloc(void* ptr, size_t size) {
     return realloc(ptr, size);
 }
 
+// Runtime type tags for object identification
+typedef enum {
+    ORION_TYPE_LIST = 1,
+    ORION_TYPE_DICT = 2
+} OrionObjectType;
+
 // Enhanced list structure for dynamic operations
 typedef struct {
-    int64_t size;        // Current number of elements
-    int64_t capacity;    // Total allocated space
-    int64_t* data;       // Pointer to element array (8 bytes per element)
+    OrionObjectType type;  // Type tag for runtime identification
+    int64_t size;          // Current number of elements
+    int64_t capacity;      // Total allocated space
+    int64_t* data;         // Pointer to element array (8 bytes per element)
 } OrionList;
 
 // Create a new empty list with initial capacity
@@ -34,6 +41,7 @@ OrionList* list_new(int64_t initial_capacity) {
         exit(1);
     }
     
+    list->type = ORION_TYPE_LIST;
     list->size = 0;
     list->capacity = initial_capacity;
     list->data = (int64_t*)orion_malloc(sizeof(int64_t) * initial_capacity);
@@ -665,6 +673,7 @@ typedef struct DictEntry {
 
 // Dictionary structure with hash table
 typedef struct {
+    OrionObjectType type;         // Type tag for runtime identification
     int64_t size;                 // Number of key-value pairs
     int64_t capacity;             // Size of hash table (number of buckets)
     DictEntry** buckets;          // Array of bucket pointers
@@ -688,6 +697,7 @@ OrionDict* dict_new(int64_t initial_capacity) {
         exit(1);
     }
     
+    dict->type = ORION_TYPE_DICT;
     dict->size = 0;
     dict->capacity = initial_capacity;
     dict->buckets = (DictEntry**)orion_malloc(sizeof(DictEntry*) * initial_capacity);
@@ -890,4 +900,34 @@ void dict_free(OrionDict* dict) {
     // Free buckets array and dictionary struct
     orion_free(dict->buckets);
     orion_free(dict);
+}
+
+// ===== Type-aware Collection Access =====
+
+// Type-safe collection access that works for both lists (by index) and dicts (by key)
+// Uses explicit runtime type tags to dispatch correctly
+int64_t collection_get(void* obj, int64_t index_or_key) {
+    if (!obj) {
+        fprintf(stderr, "Error: Cannot access null collection\n");
+        exit(1);
+    }
+    
+    // Read the type tag from the object (all Orion objects start with OrionObjectType)
+    OrionObjectType* type_ptr = (OrionObjectType*)obj;
+    OrionObjectType obj_type = *type_ptr;
+    
+    // Dispatch based on the type tag
+    switch (obj_type) {
+        case ORION_TYPE_LIST:
+            // Object is a list - use list_get for indexed access
+            return list_get((OrionList*)obj, index_or_key);
+            
+        case ORION_TYPE_DICT:
+            // Object is a dictionary - use dict_get for key-based access
+            return dict_get((OrionDict*)obj, index_or_key);
+            
+        default:
+            fprintf(stderr, "Error: Unknown object type %d in collection access\n", obj_type);
+            exit(1);
+    }
 }

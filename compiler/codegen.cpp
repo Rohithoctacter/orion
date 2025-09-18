@@ -365,7 +365,7 @@ public:
     }
     
     void visit(IndexExpression& node) override {
-        output << "    # Index expression (supports both lists and dictionaries)\n";
+        output << "    # Type-aware index expression supporting both lists and dictionaries\n";
         
         // Evaluate the object (list or dict) - result in %rax
         node.object->accept(*this);
@@ -375,9 +375,8 @@ public:
         node.index->accept(*this);
         output << "    mov %rax, %rsi  # Index/key as second argument\n";
         
-        // For now, assume it's a list - in a full implementation we'd need type information
-        // TODO: Add type checking to distinguish between list_get and dict_get
-        output << "    call list_get  # Get element (assumes list for now)\n";
+        // Call type-aware runtime function that dispatches to list_get or dict_get
+        output << "    call collection_get  # Get element with automatic type dispatch\n";
         // Result is in %rax - no additional handling needed
     }
     
