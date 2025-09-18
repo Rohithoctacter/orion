@@ -1125,10 +1125,11 @@ public:
                 // Check the type of argument to determine format
                 if (auto intLit = dynamic_cast<IntLiteral*>(arg.get())) {
                     assembly << "    # Call out() with integer\n";
-                    assembly << "    mov $" << intLit->value << ", %rsi\n";
-                    assembly << "    mov $format_int, %rdi\n";
+                    auto argRegs = backend->getArgumentRegisters();
+                    assembly << "    mov $" << intLit->value << ", " << argRegs[1] << "\n";  // Second arg (value)
+                    assembly << "    mov $format_int, " << argRegs[0] << "\n";  // First arg (format)
                     assembly << "    xor %rax, %rax\n";
-                    assembly << "    call printf\n";
+                    assembly << emitExternalCall("printf");
                 } else if (auto strLit = dynamic_cast<StringLiteral*>(arg.get())) {
                     int index = addStringLiteral(strLit->value);
                     assembly << "    # Call out() with string\n";
@@ -1138,7 +1139,7 @@ public:
                     assembly << emitLoadAddress(reg1, "str_" + std::to_string(index));
                     assembly << emitLoadAddress(reg0, "format_str");
                     assembly << "    xor %rax, %rax\n";
-                    assembly << "    call printf\n";
+                    assembly << emitExternalCall("printf");
                 } else if (auto id = dynamic_cast<Identifier*>(arg.get())) {
                     // Variable reference - use correct format based on type
                     auto it = lookupVariable(id->name);
@@ -1171,7 +1172,7 @@ public:
                     assembly << "    mov $" << (boolLit->value ? "str_true" : "str_false") << ", " << getArgumentRegister(1) << "\n";
                     assembly << "    mov $format_str, " << getArgumentRegister(0) << "\n";
                     assembly << "    xor %rax, %rax\n";
-                    assembly << "    call printf\n";
+                    assembly << emitExternalCall("printf");
                 } else if (auto interpolated = dynamic_cast<InterpolatedString*>(arg.get())) {
                     // Handle interpolated string - evaluate it and treat result as string
                     assembly << "    # Call out() with interpolated string\n";
@@ -1179,7 +1180,7 @@ public:
                     assembly << "    mov %rax, " << getArgumentRegister(1) << "  # String pointer from interpolation result\n";
                     assembly << "    mov $format_str, " << getArgumentRegister(0) << "  # Use string format\n";
                     assembly << "    xor %rax, %rax\n";
-                    assembly << "    call printf\n";
+                    assembly << emitExternalCall("printf");
                 } else {
                     // Generic expression (like arithmetic operations or comparisons)
                     // Check if the expression result is a float
@@ -1222,7 +1223,7 @@ public:
                         assembly << "    mov $format_int, " << getArgumentRegister(0) << "\n";  // Use integer format for computed results
                         assembly << "    xor %rax, %rax\n";
                     }
-                    assembly << "    call printf\n";
+                    assembly << emitExternalCall("printf");
                 }
             }
         } else if (node.name == "input") {
@@ -2523,7 +2524,7 @@ int main(int argc, char* argv[]) {
         orion::SimpleCodeGenerator codegen;
         
         // Check for Windows target test (for development/testing)
-        if (std::string(filename).find("windows_test") != std::string::npos) {
+        if (std::string(filename).find("windows") != std::string::npos) {
             std::cout << "Generating Windows x86-64 assembly for testing..." << std::endl;
             codegen = orion::SimpleCodeGenerator(orion::TargetPlatform::WINDOWS_X86_64);
         }
