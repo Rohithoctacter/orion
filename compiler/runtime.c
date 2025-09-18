@@ -653,3 +653,241 @@ double __orion_string_to_float(const char* str) {
     
     return result;
 }
+
+// ===== Dictionary Implementation =====
+
+// Hash table entry for storing key-value pairs
+typedef struct DictEntry {
+    int64_t key;                  // Key (stored as int64_t for simplicity)
+    int64_t value;                // Value (stored as int64_t for simplicity)
+    struct DictEntry* next;       // For handling collisions with chaining
+} DictEntry;
+
+// Dictionary structure with hash table
+typedef struct {
+    int64_t size;                 // Number of key-value pairs
+    int64_t capacity;             // Size of hash table (number of buckets)
+    DictEntry** buckets;          // Array of bucket pointers
+} OrionDict;
+
+// Simple hash function for 64-bit integers
+uint64_t dict_hash(int64_t key, int64_t capacity) {
+    // Use a simple multiplicative hash
+    uint64_t hash = (uint64_t)key;
+    hash *= 2654435761ULL;  // Knuth's multiplicative constant
+    return hash % capacity;
+}
+
+// Create a new empty dictionary with initial capacity
+OrionDict* dict_new(int64_t initial_capacity) {
+    if (initial_capacity < 8) initial_capacity = 8; // Minimum capacity
+    
+    OrionDict* dict = (OrionDict*)orion_malloc(sizeof(OrionDict));
+    if (!dict) {
+        fprintf(stderr, "Error: Failed to allocate memory for dictionary\n");
+        exit(1);
+    }
+    
+    dict->size = 0;
+    dict->capacity = initial_capacity;
+    dict->buckets = (DictEntry**)orion_malloc(sizeof(DictEntry*) * initial_capacity);
+    if (!dict->buckets) {
+        fprintf(stderr, "Error: Failed to allocate memory for dictionary buckets\n");
+        exit(1);
+    }
+    
+    // Initialize all buckets to NULL
+    for (int64_t i = 0; i < initial_capacity; i++) {
+        dict->buckets[i] = NULL;
+    }
+    
+    return dict;
+}
+
+// Get dictionary length (number of key-value pairs)
+int64_t dict_len(OrionDict* dict) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot get length of null dictionary\n");
+        exit(1);
+    }
+    return dict->size;
+}
+
+// Get value by key (returns -1 if key not found, for now)
+int64_t dict_get(OrionDict* dict, int64_t key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot access null dictionary\n");
+        exit(1);
+    }
+    
+    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    
+    // Search through the chain for the key
+    while (entry) {
+        if (entry->key == key) {
+            return entry->value;
+        }
+        entry = entry->next;
+    }
+    
+    // Key not found
+    fprintf(stderr, "Error: Key %ld not found in dictionary\n", key);
+    exit(1);
+}
+
+// Check if key exists in dictionary
+int dict_has_key(OrionDict* dict, int64_t key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot check null dictionary\n");
+        exit(1);
+    }
+    
+    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    
+    // Search through the chain for the key
+    while (entry) {
+        if (entry->key == key) {
+            return 1; // Found
+        }
+        entry = entry->next;
+    }
+    
+    return 0; // Not found
+}
+
+// Resize dictionary when load factor gets too high
+void dict_resize(OrionDict* dict) {
+    if (!dict) return;
+    
+    // Save old data
+    DictEntry** old_buckets = dict->buckets;
+    int64_t old_capacity = dict->capacity;
+    
+    // Create new larger hash table
+    dict->capacity *= 2;
+    dict->buckets = (DictEntry**)orion_malloc(sizeof(DictEntry*) * dict->capacity);
+    if (!dict->buckets) {
+        fprintf(stderr, "Error: Failed to allocate memory for dictionary resize\n");
+        exit(1);
+    }
+    
+    // Initialize new buckets
+    for (int64_t i = 0; i < dict->capacity; i++) {
+        dict->buckets[i] = NULL;
+    }
+    
+    // Reset size (will be recalculated as we re-insert)
+    dict->size = 0;
+    
+    // Rehash all existing entries
+    for (int64_t i = 0; i < old_capacity; i++) {
+        DictEntry* entry = old_buckets[i];
+        while (entry) {
+            DictEntry* next = entry->next;
+            
+            // Rehash and insert into new table
+            uint64_t new_bucket = dict_hash(entry->key, dict->capacity);
+            entry->next = dict->buckets[new_bucket];
+            dict->buckets[new_bucket] = entry;
+            dict->size++;
+            
+            entry = next;
+        }
+    }
+    
+    // Free old bucket array
+    orion_free(old_buckets);
+}
+
+// Set key-value pair in dictionary
+void dict_set(OrionDict* dict, int64_t key, int64_t value) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot modify null dictionary\n");
+        exit(1);
+    }
+    
+    // Check if we need to resize (load factor > 0.75)
+    if (dict->size >= dict->capacity * 3 / 4) {
+        dict_resize(dict);
+    }
+    
+    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    
+    // Search for existing key in the chain
+    while (entry) {
+        if (entry->key == key) {
+            // Update existing key
+            entry->value = value;
+            return;
+        }
+        entry = entry->next;
+    }
+    
+    // Key not found, create new entry
+    DictEntry* new_entry = (DictEntry*)orion_malloc(sizeof(DictEntry));
+    if (!new_entry) {
+        fprintf(stderr, "Error: Failed to allocate memory for dictionary entry\n");
+        exit(1);
+    }
+    
+    new_entry->key = key;
+    new_entry->value = value;
+    new_entry->next = dict->buckets[bucket_index];  // Insert at head of chain
+    dict->buckets[bucket_index] = new_entry;
+    dict->size++;
+}
+
+// Remove key from dictionary
+void dict_remove(OrionDict* dict, int64_t key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot modify null dictionary\n");
+        exit(1);
+    }
+    
+    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    DictEntry* prev = NULL;
+    
+    // Search for the key in the chain
+    while (entry) {
+        if (entry->key == key) {
+            // Remove the entry
+            if (prev) {
+                prev->next = entry->next;
+            } else {
+                dict->buckets[bucket_index] = entry->next;
+            }
+            orion_free(entry);
+            dict->size--;
+            return;
+        }
+        prev = entry;
+        entry = entry->next;
+    }
+    
+    // Key not found
+    fprintf(stderr, "Error: Cannot remove key %ld - not found in dictionary\n", key);
+    exit(1);
+}
+
+// Free dictionary and all its entries
+void dict_free(OrionDict* dict) {
+    if (!dict) return;
+    
+    // Free all entries
+    for (int64_t i = 0; i < dict->capacity; i++) {
+        DictEntry* entry = dict->buckets[i];
+        while (entry) {
+            DictEntry* next = entry->next;
+            orion_free(entry);
+            entry = next;
+        }
+    }
+    
+    // Free buckets array and dictionary struct
+    orion_free(dict->buckets);
+    orion_free(dict);
+}
