@@ -736,6 +736,37 @@ private:
             return std::move(list);
         }
         
+        if (check(TokenType::LBRACE)) {
+            Token token = advance(); // consume '{'
+            auto dict = std::make_unique<DictLiteral>(token.line, token.column);
+            
+            // Parse dictionary key-value pairs
+            if (!check(TokenType::RBRACE)) {
+                do {
+                    // Parse key
+                    auto key = parseLogicalOr();
+                    
+                    // Expect colon
+                    if (!check(TokenType::COLON)) {
+                        throw std::runtime_error("Expected ':' after dictionary key");
+                    }
+                    advance(); // consume ':'
+                    
+                    // Parse value
+                    auto value = parseLogicalOr();
+                    
+                    // Add key-value pair
+                    dict->pairs.emplace_back(std::move(key), std::move(value));
+                } while (check(TokenType::COMMA) && (advance(), true));
+            }
+            
+            if (!check(TokenType::RBRACE)) {
+                throw std::runtime_error("Expected '}' after dictionary elements");
+            }
+            advance(); // consume '}'
+            return std::move(dict);
+        }
+        
         if (check(TokenType::LPAREN)) {
             advance(); // consume '('
             

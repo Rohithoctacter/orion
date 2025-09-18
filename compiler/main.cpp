@@ -2471,6 +2471,10 @@ public:
     void visit(IndexExpression& node) override {
         assembly << "    # Type-aware index expression supporting both lists and dictionaries\n";
         
+        // Check if index/key is a string literal
+        ExprKind indexKind = inferExprKind(node.index.get());
+        bool isStringKey = (indexKind == ExprKind::STRING);
+        
         // Evaluate the object (list or dict) - result in %rax
         node.object->accept(*this);
         assembly << "    mov %rax, %rdi  # Object pointer as first argument\n";
@@ -2479,8 +2483,12 @@ public:
         node.index->accept(*this);
         assembly << "    mov %rax, %rsi  # Index/key as second argument\n";
         
-        // Call type-aware runtime function that dispatches to list_get or dict_get
-        assembly << "    call collection_get  # Get element with automatic type dispatch\n";
+        // Call appropriate runtime function based on key type
+        if (isStringKey) {
+            assembly << "    call collection_get_string  # Get element with string key\n";
+        } else {
+            assembly << "    call collection_get         # Get element with integer key\n";
+        }
         // Result is in %rax - no additional handling needed
     }
     
@@ -2497,6 +2505,10 @@ public:
         for (size_t i = 0; i < node.pairs.size(); i++) {
             assembly << "    # Processing key-value pair " << i << "\n";
             
+            // Check if key is a string literal
+            ExprKind keyKind = inferExprKind(node.pairs[i].key.get());
+            bool isStringKey = (keyKind == ExprKind::STRING);
+            
             // Evaluate key
             assembly << "    push %r12  # Save dict pointer\n";
             node.pairs[i].key->accept(*this);  // Key value in %rax
@@ -2511,11 +2523,16 @@ public:
             assembly << "    pop %r13  # Restore key\n";
             assembly << "    pop %r12  # Restore dict pointer\n";
             
-            // Call dict_set(dict, key, value)
+            // Call appropriate dict_set function based on key type
             assembly << "    mov %r12, %rdi  # Dict pointer as first argument\n";
             assembly << "    mov %r13, %rsi  # Key as second argument\n";
             assembly << "    mov %r14, %rdx  # Value as third argument\n";
-            assembly << "    call dict_set  # Set key-value pair\n";
+            
+            if (isStringKey) {
+                assembly << "    call dict_set_string  # Set string key-value pair\n";
+            } else {
+                assembly << "    call dict_set_int     # Set integer key-value pair\n";
+            }
         }
         
         // Return dictionary pointer

@@ -664,9 +664,19 @@ double __orion_string_to_float(const char* str) {
 
 // ===== Dictionary Implementation =====
 
+// Key types for dictionary entries
+typedef enum {
+    ORION_KEY_INT,     // Integer key
+    ORION_KEY_STRING   // String key
+} OrionKeyType;
+
 // Hash table entry for storing key-value pairs
 typedef struct DictEntry {
-    int64_t key;                  // Key (stored as int64_t for simplicity)
+    OrionKeyType key_type;        // Type of the key (int or string)
+    union {
+        int64_t int_key;          // Integer key
+        char* string_key;         // String key (null-terminated)
+    } key;
     int64_t value;                // Value (stored as int64_t for simplicity)
     struct DictEntry* next;       // For handling collisions with chaining
 } DictEntry;
@@ -679,12 +689,46 @@ typedef struct {
     DictEntry** buckets;          // Array of bucket pointers
 } OrionDict;
 
-// Simple hash function for 64-bit integers
-uint64_t dict_hash(int64_t key, int64_t capacity) {
+// Hash function for string keys (djb2 algorithm)
+uint64_t dict_hash_string(const char* str, int64_t capacity) {
+    uint64_t hash = 5381;
+    unsigned char c;
+    
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c; // hash * 33 + c
+    }
+    
+    return hash % capacity;
+}
+
+// Hash function for integer keys
+uint64_t dict_hash_int(int64_t key, int64_t capacity) {
     // Use a simple multiplicative hash
     uint64_t hash = (uint64_t)key;
     hash *= 2654435761ULL;  // Knuth's multiplicative constant
     return hash % capacity;
+}
+
+// Generic hash function that dispatches based on key type
+uint64_t dict_hash(DictEntry* entry, int64_t capacity) {
+    if (entry->key_type == ORION_KEY_STRING) {
+        return dict_hash_string(entry->key.string_key, capacity);
+    } else {
+        return dict_hash_int(entry->key.int_key, capacity);
+    }
+}
+
+// Compare two keys for equality
+int dict_keys_equal(DictEntry* entry1, OrionKeyType key_type2, void* key2) {
+    if (entry1->key_type != key_type2) {
+        return 0; // Different types are never equal
+    }
+    
+    if (key_type2 == ORION_KEY_STRING) {
+        return strcmp(entry1->key.string_key, (char*)key2) == 0;
+    } else {
+        return entry1->key.int_key == *(int64_t*)key2;
+    }
 }
 
 // Create a new empty dictionary with initial capacity
@@ -723,19 +767,19 @@ int64_t dict_len(OrionDict* dict) {
     return dict->size;
 }
 
-// Get value by key (returns -1 if key not found, for now)
-int64_t dict_get(OrionDict* dict, int64_t key) {
+// Get value by key (integer key version)
+int64_t dict_get_int(OrionDict* dict, int64_t key) {
     if (!dict) {
         fprintf(stderr, "Error: Cannot access null dictionary\n");
         exit(1);
     }
     
-    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    uint64_t bucket_index = dict_hash_int(key, dict->capacity);
     DictEntry* entry = dict->buckets[bucket_index];
     
     // Search through the chain for the key
     while (entry) {
-        if (entry->key == key) {
+        if (dict_keys_equal(entry, ORION_KEY_INT, &key)) {
             return entry->value;
         }
         entry = entry->next;
@@ -746,25 +790,88 @@ int64_t dict_get(OrionDict* dict, int64_t key) {
     exit(1);
 }
 
-// Check if key exists in dictionary
-int dict_has_key(OrionDict* dict, int64_t key) {
+// Get value by key (string key version)
+int64_t dict_get_string(OrionDict* dict, const char* key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot access null dictionary\n");
+        exit(1);
+    }
+    
+    if (!key) {
+        fprintf(stderr, "Error: Cannot access dictionary with null key\n");
+        exit(1);
+    }
+    
+    uint64_t bucket_index = dict_hash_string(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    
+    // Search through the chain for the key
+    while (entry) {
+        if (dict_keys_equal(entry, ORION_KEY_STRING, (void*)key)) {
+            return entry->value;
+        }
+        entry = entry->next;
+    }
+    
+    // Key not found
+    fprintf(stderr, "Error: String key '%s' not found in dictionary\n", key);
+    exit(1);
+}
+
+// Generic get function that works with both key types (for backwards compatibility)
+int64_t dict_get(OrionDict* dict, int64_t key) {
+    return dict_get_int(dict, key);
+}
+
+// Check if integer key exists in dictionary
+int dict_has_key_int(OrionDict* dict, int64_t key) {
     if (!dict) {
         fprintf(stderr, "Error: Cannot check null dictionary\n");
         exit(1);
     }
     
-    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    uint64_t bucket_index = dict_hash_int(key, dict->capacity);
     DictEntry* entry = dict->buckets[bucket_index];
     
     // Search through the chain for the key
     while (entry) {
-        if (entry->key == key) {
+        if (dict_keys_equal(entry, ORION_KEY_INT, &key)) {
             return 1; // Found
         }
         entry = entry->next;
     }
     
     return 0; // Not found
+}
+
+// Check if string key exists in dictionary
+int dict_has_key_string(OrionDict* dict, const char* key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot check null dictionary\n");
+        exit(1);
+    }
+    
+    if (!key) {
+        return 0; // Null key doesn't exist
+    }
+    
+    uint64_t bucket_index = dict_hash_string(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    
+    // Search through the chain for the key
+    while (entry) {
+        if (dict_keys_equal(entry, ORION_KEY_STRING, (void*)key)) {
+            return 1; // Found
+        }
+        entry = entry->next;
+    }
+    
+    return 0; // Not found
+}
+
+// Generic has_key function (for backwards compatibility)
+int dict_has_key(OrionDict* dict, int64_t key) {
+    return dict_has_key_int(dict, key);
 }
 
 // Resize dictionary when load factor gets too high
@@ -797,8 +904,8 @@ void dict_resize(OrionDict* dict) {
         while (entry) {
             DictEntry* next = entry->next;
             
-            // Rehash and insert into new table
-            uint64_t new_bucket = dict_hash(entry->key, dict->capacity);
+            // Rehash and insert into new table using the new hash function
+            uint64_t new_bucket = dict_hash(entry, dict->capacity);
             entry->next = dict->buckets[new_bucket];
             dict->buckets[new_bucket] = entry;
             dict->size++;
@@ -811,8 +918,8 @@ void dict_resize(OrionDict* dict) {
     orion_free(old_buckets);
 }
 
-// Set key-value pair in dictionary
-void dict_set(OrionDict* dict, int64_t key, int64_t value) {
+// Set key-value pair in dictionary (integer key version)
+void dict_set_int(OrionDict* dict, int64_t key, int64_t value) {
     if (!dict) {
         fprintf(stderr, "Error: Cannot modify null dictionary\n");
         exit(1);
@@ -823,12 +930,12 @@ void dict_set(OrionDict* dict, int64_t key, int64_t value) {
         dict_resize(dict);
     }
     
-    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    uint64_t bucket_index = dict_hash_int(key, dict->capacity);
     DictEntry* entry = dict->buckets[bucket_index];
     
     // Search for existing key in the chain
     while (entry) {
-        if (entry->key == key) {
+        if (dict_keys_equal(entry, ORION_KEY_INT, &key)) {
             // Update existing key
             entry->value = value;
             return;
@@ -843,32 +950,96 @@ void dict_set(OrionDict* dict, int64_t key, int64_t value) {
         exit(1);
     }
     
-    new_entry->key = key;
+    new_entry->key_type = ORION_KEY_INT;
+    new_entry->key.int_key = key;
     new_entry->value = value;
     new_entry->next = dict->buckets[bucket_index];  // Insert at head of chain
     dict->buckets[bucket_index] = new_entry;
     dict->size++;
 }
 
-// Remove key from dictionary
-void dict_remove(OrionDict* dict, int64_t key) {
+// Set key-value pair in dictionary (string key version)
+void dict_set_string(OrionDict* dict, const char* key, int64_t value) {
     if (!dict) {
         fprintf(stderr, "Error: Cannot modify null dictionary\n");
         exit(1);
     }
     
-    uint64_t bucket_index = dict_hash(key, dict->capacity);
+    if (!key) {
+        fprintf(stderr, "Error: Cannot set dictionary entry with null key\n");
+        exit(1);
+    }
+    
+    // Check if we need to resize (load factor > 0.75)
+    if (dict->size >= dict->capacity * 3 / 4) {
+        dict_resize(dict);
+    }
+    
+    uint64_t bucket_index = dict_hash_string(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    
+    // Search for existing key in the chain
+    while (entry) {
+        if (dict_keys_equal(entry, ORION_KEY_STRING, (void*)key)) {
+            // Update existing key
+            entry->value = value;
+            return;
+        }
+        entry = entry->next;
+    }
+    
+    // Key not found, create new entry
+    DictEntry* new_entry = (DictEntry*)orion_malloc(sizeof(DictEntry));
+    if (!new_entry) {
+        fprintf(stderr, "Error: Failed to allocate memory for dictionary entry\n");
+        exit(1);
+    }
+    
+    // Copy the string key to ensure we own it
+    size_t key_len = strlen(key);
+    new_entry->key.string_key = (char*)orion_malloc(key_len + 1);
+    if (!new_entry->key.string_key) {
+        fprintf(stderr, "Error: Failed to allocate memory for dictionary string key\n");
+        exit(1);
+    }
+    strcpy(new_entry->key.string_key, key);
+    
+    new_entry->key_type = ORION_KEY_STRING;
+    new_entry->value = value;
+    new_entry->next = dict->buckets[bucket_index];  // Insert at head of chain
+    dict->buckets[bucket_index] = new_entry;
+    dict->size++;
+}
+
+// Generic set function (for backwards compatibility)
+void dict_set(OrionDict* dict, int64_t key, int64_t value) {
+    dict_set_int(dict, key, value);
+}
+
+// Remove integer key from dictionary
+void dict_remove_int(OrionDict* dict, int64_t key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot modify null dictionary\n");
+        exit(1);
+    }
+    
+    uint64_t bucket_index = dict_hash_int(key, dict->capacity);
     DictEntry* entry = dict->buckets[bucket_index];
     DictEntry* prev = NULL;
     
     // Search for the key in the chain
     while (entry) {
-        if (entry->key == key) {
+        if (dict_keys_equal(entry, ORION_KEY_INT, &key)) {
             // Remove the entry
             if (prev) {
                 prev->next = entry->next;
             } else {
                 dict->buckets[bucket_index] = entry->next;
+            }
+            
+            // Free string key if it's a string entry
+            if (entry->key_type == ORION_KEY_STRING) {
+                orion_free(entry->key.string_key);
             }
             orion_free(entry);
             dict->size--;
@@ -883,6 +1054,54 @@ void dict_remove(OrionDict* dict, int64_t key) {
     exit(1);
 }
 
+// Remove string key from dictionary
+void dict_remove_string(OrionDict* dict, const char* key) {
+    if (!dict) {
+        fprintf(stderr, "Error: Cannot modify null dictionary\n");
+        exit(1);
+    }
+    
+    if (!key) {
+        fprintf(stderr, "Error: Cannot remove null key from dictionary\n");
+        exit(1);
+    }
+    
+    uint64_t bucket_index = dict_hash_string(key, dict->capacity);
+    DictEntry* entry = dict->buckets[bucket_index];
+    DictEntry* prev = NULL;
+    
+    // Search for the key in the chain
+    while (entry) {
+        if (dict_keys_equal(entry, ORION_KEY_STRING, (void*)key)) {
+            // Remove the entry
+            if (prev) {
+                prev->next = entry->next;
+            } else {
+                dict->buckets[bucket_index] = entry->next;
+            }
+            
+            // Free string key
+            if (entry->key_type == ORION_KEY_STRING) {
+                orion_free(entry->key.string_key);
+            }
+            orion_free(entry);
+            dict->size--;
+            return;
+        }
+        prev = entry;
+        entry = entry->next;
+    }
+    
+    // Key not found
+    fprintf(stderr, "Error: Cannot remove string key '%s' - not found in dictionary\n", key);
+    exit(1);
+}
+
+// Generic remove function (for backwards compatibility)
+void dict_remove(OrionDict* dict, int64_t key) {
+    dict_remove_int(dict, key);
+}
+
 // Free dictionary and all its entries
 void dict_free(OrionDict* dict) {
     if (!dict) return;
@@ -892,6 +1111,11 @@ void dict_free(OrionDict* dict) {
         DictEntry* entry = dict->buckets[i];
         while (entry) {
             DictEntry* next = entry->next;
+            
+            // Free string key if it's a string entry
+            if (entry->key_type == ORION_KEY_STRING) {
+                orion_free(entry->key.string_key);
+            }
             orion_free(entry);
             entry = next;
         }
@@ -928,6 +1152,29 @@ int64_t collection_get(void* obj, int64_t index_or_key) {
             
         default:
             fprintf(stderr, "Error: Unknown object type %d in collection access\n", obj_type);
+            exit(1);
+    }
+}
+
+// Collection access for string keys (for dictionaries)
+int64_t collection_get_string(void* obj, const char* string_key) {
+    if (!obj) {
+        fprintf(stderr, "Error: Cannot access null collection\n");
+        exit(1);
+    }
+    
+    // Read the type tag from the object
+    OrionObjectType* type_ptr = (OrionObjectType*)obj;
+    OrionObjectType obj_type = *type_ptr;
+    
+    // Only dictionaries support string keys
+    switch (obj_type) {
+        case ORION_TYPE_DICT:
+            // Object is a dictionary - use dict_get_string for string key access
+            return dict_get_string((OrionDict*)obj, string_key);
+            
+        default:
+            fprintf(stderr, "Error: String keys only supported for dictionaries, got object type %d\n", obj_type);
             exit(1);
     }
 }

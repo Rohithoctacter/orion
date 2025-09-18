@@ -2469,19 +2469,57 @@ public:
     }
     
     void visit(IndexExpression& node) override {
-        assembly << "    # Enhanced index expression with negative indexing support\n";
+        assembly << "    # Type-aware index expression supporting both lists and dictionaries\n";
         
-        // Evaluate the object (list) - result in %rax
+        // Evaluate the object (list or dict) - result in %rax
         node.object->accept(*this);
-        assembly << "    mov %rax, %rdi  # List pointer as first argument\n";
+        assembly << "    mov %rax, %rdi  # Object pointer as first argument\n";
         
-        // Evaluate the index - result in %rax
+        // Evaluate the index/key - result in %rax
         node.index->accept(*this);
-        assembly << "    mov %rax, %rsi  # Index as second argument\n";
+        assembly << "    mov %rax, %rsi  # Index/key as second argument\n";
         
-        // Call runtime function for safe indexing with negative support
-        assembly << "    call list_get  # Get element with bounds checking\n";
+        // Call type-aware runtime function that dispatches to list_get or dict_get
+        assembly << "    call collection_get  # Get element with automatic type dispatch\n";
         // Result is in %rax - no additional handling needed
+    }
+    
+    void visit(DictLiteral& node) override {
+        assembly << "    # Dictionary literal with " << node.pairs.size() << " key-value pairs\n";
+        
+        // Create dictionary with appropriate initial capacity
+        size_t capacity = node.pairs.size() > 8 ? node.pairs.size() * 2 : 8;
+        assembly << "    mov $" << capacity << ", %rdi  # Initial capacity\n";
+        assembly << "    call dict_new  # Create new dictionary\n";
+        assembly << "    mov %rax, %r12  # Save dict pointer in %r12\n";
+        
+        // Add each key-value pair to the dictionary
+        for (size_t i = 0; i < node.pairs.size(); i++) {
+            assembly << "    # Processing key-value pair " << i << "\n";
+            
+            // Evaluate key
+            assembly << "    push %r12  # Save dict pointer\n";
+            node.pairs[i].key->accept(*this);  // Key value in %rax
+            assembly << "    mov %rax, %r13  # Save key in %r13\n";
+            assembly << "    pop %r12  # Restore dict pointer\n";
+            
+            // Evaluate value  
+            assembly << "    push %r12  # Save dict pointer\n";
+            assembly << "    push %r13  # Save key\n";
+            node.pairs[i].value->accept(*this);  // Value in %rax
+            assembly << "    mov %rax, %r14  # Save value in %r14\n";
+            assembly << "    pop %r13  # Restore key\n";
+            assembly << "    pop %r12  # Restore dict pointer\n";
+            
+            // Call dict_set(dict, key, value)
+            assembly << "    mov %r12, %rdi  # Dict pointer as first argument\n";
+            assembly << "    mov %r13, %rsi  # Key as second argument\n";
+            assembly << "    mov %r14, %rdx  # Value as third argument\n";
+            assembly << "    call dict_set  # Set key-value pair\n";
+        }
+        
+        // Return dictionary pointer
+        assembly << "    mov %r12, %rax  # Dictionary pointer as result\n";
     }
     
     void visit(StructDeclaration& node) override { }
