@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["openssl", "postgresql"]
+packages = ["openssl", "postgresql", "gcc", "gnumake", "file", "binutils"]
 
 [workflows]
 runButton = "Project"
@@ -34,6 +34,10 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 42303
+externalPort = 3000
+
 [deployment]
 deploymentTarget = "autoscale"
-run = ["uv", "run", "gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["uv", "run", "gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "main:app"]
