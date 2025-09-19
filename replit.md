@@ -10,6 +10,11 @@ This is a web-based IDE for the Orion Programming Language - a pure compiled sys
 - Updated workflow configuration with proper webview output type
 - Confirmed deployment configuration for production autoscale
 - **COMPLETED IMPORT**: Web IDE is now fully functional in Replit environment with working compilation
+- **NEW FEATURE**: Implemented Python-style dictionary assignment operations (dict["key"] = value)
+  - Added type-aware collection assignment functions to runtime.c
+  - Enhanced IndexAssignment code generator to support both lists and dictionaries
+  - Fixed type inference and print conversion for collection access
+  - Dictionary and list assignment operations now work without segmentation faults
 
 ## Project Architecture
 ### Backend Components
@@ -39,6 +44,8 @@ This is a web-based IDE for the Orion Programming Language - a pure compiled sys
 - System dependencies installed (GCC, Make, binutils, file utilities)
 - Python dependencies managed by UV package manager
 - Runtime linking resolved - programs now execute and produce correct output
+- **Dictionary Operations**: Python-style assignment (dict["key"] = value) for adding/updating entries
+- **List Operations**: Array assignment (list[index] = value) works correctly
 
 ✅ **Fixed Issues:**
 - **RESOLVED**: Execution bug was caused by missing `print` function in runtime.c
@@ -56,4 +63,6 @@ This is a web-based IDE for the Orion Programming Language - a pure compiled sys
 - Preserve clean Python-like syntax design
 
 ## Development Notes
-The Orion language is designed as a learning/demonstration project. The core concept of "C performance with Python readability" is implemented, but there are execution bugs that need to be addressed in the code generator.
+The Orion language is designed as a learning/demonstration project. The core concept of "C performance with Python readability" is implemented with working dictionary and list assignment operations.
+
+**Known Limitation**: String values retrieved from dictionaries print as numeric addresses instead of string content due to the runtime's type-agnostic storage system. Assignment and retrieval operations work correctly; the limitation only affects string display.
