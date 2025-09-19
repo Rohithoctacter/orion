@@ -1179,6 +1179,60 @@ int64_t collection_get_string(void* obj, const char* string_key) {
     }
 }
 
+// Type-safe collection assignment that works for both lists (by index) and dicts (by key)
+// Uses explicit runtime type tags to dispatch correctly
+void collection_set(void* obj, int64_t index_or_key, int64_t value) {
+    if (!obj) {
+        fprintf(stderr, "Error: Cannot assign to null collection\n");
+        exit(1);
+    }
+    
+    // Read the type tag from the object (all Orion objects start with OrionObjectType)
+    OrionObjectType* type_ptr = (OrionObjectType*)obj;
+    OrionObjectType obj_type = *type_ptr;
+    
+    // Dispatch based on the type tag
+    switch (obj_type) {
+        case ORION_TYPE_LIST:
+            // Object is a list - use list_set for indexed assignment
+            list_set((OrionList*)obj, index_or_key, value);
+            break;
+            
+        case ORION_TYPE_DICT:
+            // Object is a dictionary - use dict_set for key-based assignment
+            dict_set((OrionDict*)obj, index_or_key, value);
+            break;
+            
+        default:
+            fprintf(stderr, "Error: Unknown object type %d in collection assignment\n", obj_type);
+            exit(1);
+    }
+}
+
+// Collection assignment for string keys (for dictionaries)
+void collection_set_string(void* obj, const char* string_key, int64_t value) {
+    if (!obj) {
+        fprintf(stderr, "Error: Cannot assign to null collection\n");
+        exit(1);
+    }
+    
+    // Read the type tag from the object
+    OrionObjectType* type_ptr = (OrionObjectType*)obj;
+    OrionObjectType obj_type = *type_ptr;
+    
+    // Only dictionaries support string keys
+    switch (obj_type) {
+        case ORION_TYPE_DICT:
+            // Object is a dictionary - use dict_set_string for string key assignment
+            dict_set_string((OrionDict*)obj, string_key, value);
+            break;
+            
+        default:
+            fprintf(stderr, "Error: String keys only supported for dictionaries, got object type %d\n", obj_type);
+            exit(1);
+    }
+}
+
 // Simple print function for string output (used by generated code)
 void print(const char* str) {
     printf("%s\n", str);
