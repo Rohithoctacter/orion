@@ -278,6 +278,108 @@ public:
         }
     }
     
+    void visit(TupleExpression& node) override {
+        output << "    # Tuple expression - simplified (not fully implemented)\n";
+        // For now, just evaluate the first element
+        if (!node.elements.empty()) {
+            node.elements[0]->accept(*this);
+        } else {
+            output << "    mov $0, %rax  # Empty tuple\n";
+        }
+    }
+    
+    void visit(ListLiteral& node) override {
+        output << "    # List literal with " << node.elements.size() << " elements\n";
+        
+        if (node.elements.empty()) {
+            // Create empty list using runtime
+            output << "    mov $4, %rdi  # Initial capacity for empty list\n";
+            output << "    call list_new  # Create new empty list\n";
+            return;
+        }
+        
+        // For non-empty lists, collect elements in temporary array first
+        output << "    # Allocating temporary array for " << node.elements.size() << " elements\n";
+        size_t tempArraySize = node.elements.size() * 8;  // 8 bytes per element
+        output << "    mov $" << tempArraySize << ", %rdi\n";
+        output << "    call orion_malloc  # Allocate temporary array\n";
+        output << "    mov %rax, %r12  # Save temp array pointer in %r12\n";
+        
+        // Store each element in temporary array
+        for (size_t i = 0; i < node.elements.size(); i++) {
+            output << "    # Evaluating element " << i << "\n";
+            output << "    push %r12  # Save temp array pointer\n";
+            node.elements[i]->accept(*this);  // Element value in %rax
+            output << "    pop %r12  # Restore temp array pointer\n";
+            output << "    movq %rax, " << (i * 8) << "(%r12)  # Store in temp array\n";
+        }
+        
+        // Create list from temporary data
+        output << "    mov %r12, %rdi  # Temp array pointer\n";
+        output << "    mov $" << node.elements.size() << ", %rsi  # Element count\n";
+        output << "    call list_from_data  # Create list from data\n";
+        
+        // Free temporary array - list_from_data made a copy
+        output << "    push %rax  # Save list pointer\n";
+        output << "    mov %r12, %rdi  # Temp array pointer\n";
+        output << "    call orion_free  # Free temporary array\n";
+        output << "    pop %rax  # Restore list pointer\n";
+    }
+    
+    void visit(DictLiteral& node) override {
+        output << "    # Dictionary literal with " << node.pairs.size() << " key-value pairs\n";
+        
+        // Create dictionary with appropriate initial capacity
+        size_t capacity = node.pairs.size() > 8 ? node.pairs.size() * 2 : 8;
+        output << "    mov $" << capacity << ", %rdi  # Initial capacity\n";
+        output << "    call dict_new  # Create new dictionary\n";
+        output << "    mov %rax, %r12  # Save dict pointer in %r12\n";
+        
+        // Add each key-value pair to the dictionary
+        for (size_t i = 0; i < node.pairs.size(); i++) {
+            output << "    # Processing key-value pair " << i << "\n";
+            
+            // Evaluate key
+            output << "    push %r12  # Save dict pointer\n";
+            node.pairs[i].key->accept(*this);  // Key value in %rax
+            output << "    mov %rax, %r13  # Save key in %r13\n";
+            output << "    pop %r12  # Restore dict pointer\n";
+            
+            // Evaluate value  
+            output << "    push %r12  # Save dict pointer\n";
+            output << "    push %r13  # Save key\n";
+            node.pairs[i].value->accept(*this);  // Value in %rax
+            output << "    mov %rax, %r14  # Save value in %r14\n";
+            output << "    pop %r13  # Restore key\n";
+            output << "    pop %r12  # Restore dict pointer\n";
+            
+            // Call dict_set(dict, key, value)
+            output << "    mov %r12, %rdi  # Dict pointer as first argument\n";
+            output << "    mov %r13, %rsi  # Key as second argument\n";
+            output << "    mov %r14, %rdx  # Value as third argument\n";
+            output << "    call dict_set  # Set key-value pair\n";
+        }
+        
+        // Return dictionary pointer
+        output << "    mov %r12, %rax  # Dictionary pointer as result\n";
+    }
+    
+    void visit(IndexExpression& node) override {
+        output << "    # Type-aware index expression supporting both lists and dictionaries\n";
+        
+        // Evaluate the object (list or dict) - result in %rax
+        node.object->accept(*this);
+        output << "    mov %rax, %rdi  # Object pointer as first argument\n";
+        
+        // Evaluate the index/key - result in %rax
+        node.index->accept(*this);
+        output << "    mov %rax, %rsi  # Index/key as second argument\n";
+        
+        // Call type-aware runtime function that dispatches to list_get or dict_get
+        output << "    call collection_get  # Get element with automatic type dispatch\n";
+        // Result is in %rax - no additional handling needed
+    }
+    
     void visit(VariableDeclaration& node) override {
         output << "    # Variable declaration: " << node.name << "\n";
         

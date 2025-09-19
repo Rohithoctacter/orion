@@ -1178,3 +1178,8 @@ int64_t collection_get_string(void* obj, const char* string_key) {
             exit(1);
     }
 }
+
+// Simple print function for string output (used by generated code)
+void print(const char* str) {
+    printf("%s\n", str);
+}
