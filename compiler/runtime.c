@@ -1237,3 +1237,11 @@ void collection_set_string(void* obj, const char* string_key, int64_t value) {
 void print(const char* str) {
     printf("%s\n", str);
 }
+
+// Windows calling convention adapter for testing (when targeting Windows but running on Linux)
+#ifdef TARGET_WINDOWS
+__attribute__((ms_abi))
+void print_windows(const char* str) {
+    printf("%s\n", str);
+}
+#endif

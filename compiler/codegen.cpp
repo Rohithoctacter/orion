@@ -54,14 +54,16 @@ private:
     void generateRuntimeSupport() {
         output << "\n# Runtime support functions\n";
         
-        // Print function (simplified)
+        // Print function (cross-platform)
         output << "print:\n";
         output << "    push %rbp\n";
         output << "    mov %rsp, %rbp\n";
-        output << "    mov %rdi, %rsi\n";
-        output << "    mov $format_str, %rdi\n";
+        output << "    subq $32, %rsp  # Shadow space for Windows\n";
+        output << "    mov %rcx, %rdx   # Windows: arg1 (%rcx) to arg2 (%rdx)\n";
+        output << "    mov $format_str, %rcx  # Windows: format string to arg1 (%rcx)\n";
         output << "    xor %rax, %rax\n";
         output << "    call printf\n";
+        output << "    addq $32, %rsp  # Clean up shadow space\n";
         output << "    pop %rbp\n";
         output << "    ret\n";
         output << "\n";
@@ -70,10 +72,12 @@ private:
         output << "print_int:\n";
         output << "    push %rbp\n";
         output << "    mov %rsp, %rbp\n";
-        output << "    mov %rdi, %rsi\n";
-        output << "    mov $format_int, %rdi\n";
+        output << "    subq $32, %rsp  # Shadow space for Windows\n";
+        output << "    mov %rcx, %rdx   # Windows: arg1 (%rcx) to arg2 (%rdx)\n";
+        output << "    mov $format_int, %rcx  # Windows: format string to arg1 (%rcx)\n";
         output << "    xor %rax, %rax\n";
         output << "    call printf\n";
+        output << "    addq $32, %rsp  # Clean up shadow space\n";
         output << "    pop %rbp\n";
         output << "    ret\n";
         output << "\n";
