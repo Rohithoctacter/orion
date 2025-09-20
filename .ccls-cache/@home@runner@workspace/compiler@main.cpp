@@ -195,7 +195,7 @@ public:
             backend = std::move(targetBackend);
         } else {
             // Default to current platform detection
-            backend = createTargetBackend(detectCurrentPlatform());
+            backend = createTargetBackend(getTargetPlatform());
         }
     }
     
@@ -291,9 +291,8 @@ public:
         
         // Return 0 - platform specific register syntax
         fullAssembly << emitMov(getImmediate("0"), getRegisterName("rax"));
-        // Calculate the same stack restoration amount as was reserved
-        int shadowSpace = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) ? 32 : 0;
-        int aligned = ((64 + shadowSpace + 15) / 16) * 16;
+        // Calculate stack restoration amount (simplified)
+        int aligned = ((64 + 15) / 16) * 16;
         fullAssembly << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack pointer
         fullAssembly << emitPop("rbp");
         fullAssembly << "    ret\n";
@@ -374,27 +373,20 @@ public:
         return getRegisterName(reg);
     }
     
-    // Helper function to wrap external function calls with Windows shadow space
+    // Helper function to wrap external function calls with proper ABI handling
     std::string emitExternalCall(const std::string& functionName) {
         std::ostringstream result;
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
         
-        if (isWindows) {
-            // Windows requires shadow space for external calls
-            auto windowsBackend = dynamic_cast<const WindowsX86_64Backend*>(backend.get());
-            if (windowsBackend) {
-                result << windowsBackend->getShadowSpaceSetup();
-            }
+        // Check if this is our unified backend that supports shadow space
+        auto unifiedBackend = dynamic_cast<const orion::UnifiedX86_64Backend*>(backend.get());
+        if (unifiedBackend && unifiedBackend->getABI().shadowSpace > 0) {
+            result << unifiedBackend->getShadowSpaceSetup();
         }
         
         result << "    call " << backend->getPlatformSymbol(functionName) << "\n";
         
-        if (isWindows) {
-            // Cleanup shadow space
-            auto windowsBackend = dynamic_cast<const WindowsX86_64Backend*>(backend.get());
-            if (windowsBackend) {
-                result << windowsBackend->getShadowSpaceCleanup();
-            }
+        if (unifiedBackend && unifiedBackend->getABI().shadowSpace > 0) {
+            result << unifiedBackend->getShadowSpaceCleanup();
         }
         
         return result.str();
@@ -516,9 +508,8 @@ public:
                 assembly << currentAssembly;
                 
                 // Function epilogue - user functions should return to caller
-                // Calculate the same stack restoration amount as was reserved  
-                int shadowSpace = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) ? 32 : 0;
-                int aligned = ((64 + shadowSpace + 15) / 16) * 16;
+                // Calculate stack restoration amount (simplified)
+                int aligned = ((64 + 15) / 16) * 16;
                 funcsAsm << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack space
                 funcsAsm << emitPop("rbp");
                 funcsAsm << "    ret\n";
@@ -2662,16 +2653,21 @@ int main(int argc, char* argv[]) {
         orion::SimpleCodeGenerator codegen;
         
         // Use build-time platform targeting
-        TargetPlatform targetPlatform = getTargetPlatform();
+        orion::TargetPlatform targetPlatform = orion::getTargetPlatform();
         codegen = orion::SimpleCodeGenerator(targetPlatform);
         
         // Show which platform we're targeting
-        ABIConfig abiConfig = ABIConfig::getConfig(targetPlatform);
         std::cout << "Targeting platform: ";
         switch (targetPlatform) {
-            case TargetPlatform::LINUX_X86_64: std::cout << "Linux x86-64"; break;
-            case TargetPlatform::MACOS_X86_64: std::cout << "macOS x86-64"; break; 
-            case TargetPlatform::WINDOWS_X86_64: std::cout << "Windows x86-64"; break;
+            case orion::TargetPlatform::LINUX_X86_64: 
+                std::cout << "Linux x86-64"; 
+                break;
+            case orion::TargetPlatform::MACOS_X86_64: 
+                std::cout << "macOS x86-64"; 
+                break; 
+            case orion::TargetPlatform::WINDOWS_X86_64: 
+                std::cout << "Windows x86-64"; 
+                break;
         }
         std::cout << std::endl;
         

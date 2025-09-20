@@ -275,19 +275,128 @@ struct ABIConfig {
     }
 };
 
+// Unified backend that uses ABIConfig for platform-specific behavior
+class UnifiedX86_64Backend : public TargetBackend {
+private:
+    ABIConfig abiConfig;
+    TargetPlatform platform;
+    
+public:
+    UnifiedX86_64Backend(TargetPlatform targetPlatform) : platform(targetPlatform) {
+        abiConfig = ABIConfig::getConfig(targetPlatform);
+    }
+    
+    std::string getDataSection() const override {
+        return ".section .data\n";
+    }
+    
+    std::string getTextSection() const override {
+        return "\n.section .text\n";
+    }
+    
+    std::string getGlobalDirective(const std::string& symbol) const override {
+        return ".globl " + getPlatformSymbol(symbol) + "\n";
+    }
+    
+    std::string getExternDirective(const std::string& symbol) const override {
+        return ".extern " + getPlatformSymbol(symbol) + "\n";
+    }
+    
+    std::string getPlatformSymbol(const std::string& symbol) const override {
+        return abiConfig.symbolPrefix + symbol;
+    }
+    
+    std::vector<std::string> getArgumentRegisters() const override {
+        return abiConfig.argRegs;
+    }
+    
+    std::string getReturnRegister() const override {
+        return "%rax";
+    }
+    
+    int getStackAlignment() const override {
+        return abiConfig.stackAlign;
+    }
+    
+    std::string getStackReservation(int bytes) const override {
+        int totalBytes = bytes + abiConfig.shadowSpace;
+        int aligned = ((totalBytes + abiConfig.stackAlign - 1) / abiConfig.stackAlign) * abiConfig.stackAlign;
+        return "    subq $" + std::to_string(aligned) + ", %rsp\n";
+    }
+    
+    TargetPlatform getPlatform() const override {
+        return platform;
+    }
+    
+    std::string getPlatformName() const override {
+        switch (platform) {
+            case TargetPlatform::WINDOWS_X86_64: return "windows-x86_64";
+            case TargetPlatform::MACOS_X86_64: return "macos-x86_64";
+            case TargetPlatform::LINUX_X86_64: return "linux-x86_64";
+            default: return "unknown";
+        }
+    }
+    
+    std::string getAssemblyExtension() const override {
+        return ".s";
+    }
+    
+    std::string getExecutableExtension() const override {
+        return abiConfig.exeExtension;
+    }
+    
+    std::string getAssemblerCommand(const std::string& asmFile, 
+                                   const std::string& objFile,
+                                   const std::string& exeFile) const override {
+        std::string cmd = abiConfig.assemblerCmd;
+        // Replace placeholders
+        size_t pos = cmd.find("{exe}");
+        if (pos != std::string::npos) cmd.replace(pos, 5, exeFile);
+        pos = cmd.find("{asm}");
+        if (pos != std::string::npos) cmd.replace(pos, 5, asmFile);
+        return cmd;
+    }
+    
+    std::string getMemoryOperand(const std::string& base, int offset) const override {
+        if (offset == 0) {
+            return "(%" + base + ")";
+        } else {
+            return std::to_string(offset) + "(%" + base + ")";
+        }
+    }
+    
+    std::string getStringDirective(const std::string& label, const std::string& value) const override {
+        return label + ": .string \"" + value + "\"\n";
+    }
+    
+    std::string getQuadDirective(const std::string& label, uint64_t value) const override {
+        return label + ": .quad " + std::to_string(value) + "\n";
+    }
+    
+    // Windows-specific shadow space management
+    std::string getShadowSpaceSetup() const {
+        if (abiConfig.shadowSpace > 0) {
+            return "    subq $" + std::to_string(abiConfig.shadowSpace) + ", %rsp  # Shadow space\n";
+        }
+        return "";
+    }
+    
+    std::string getShadowSpaceCleanup() const {
+        if (abiConfig.shadowSpace > 0) {
+            return "    addq $" + std::to_string(abiConfig.shadowSpace) + ", %rsp  # Clean up shadow space\n";
+        }
+        return "";
+    }
+    
+    // Get ABI configuration
+    const ABIConfig& getABI() const {
+        return abiConfig;
+    }
+};
+
 // Factory function to create appropriate backend based on platform
 std::unique_ptr<TargetBackend> createTargetBackend(TargetPlatform platform) {
-    switch (platform) {
-        case TargetPlatform::LINUX_X86_64:
-            return std::make_unique<LinuxX86_64Backend>();
-        case TargetPlatform::MACOS_X86_64:
-            return std::make_unique<MacOSX86_64Backend>();
-        case TargetPlatform::WINDOWS_X86_64:
-            // Temporarily use Linux backend for Windows - we'll implement unified backend later
-            return std::make_unique<LinuxX86_64Backend>();
-        default:
-            return std::make_unique<LinuxX86_64Backend>(); // Default fallback
-    }
+    return std::make_unique<UnifiedX86_64Backend>(platform);
 }
 
 // Build-time platform targeting with hardcoded switches
