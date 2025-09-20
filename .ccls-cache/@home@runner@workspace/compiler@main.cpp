@@ -138,6 +138,21 @@ private:
                 if (var->type == "list") return ExprKind::LIST;
             }
         }
+        if (auto idx = dynamic_cast<IndexExpression*>(expr)) {
+            // Type inference for IndexExpression (collection access)
+            auto objKind = inferExprKind(idx->object.get());
+            auto idxKind = inferExprKind(idx->index.get());
+            
+            // If accessing a list, elements are typically integers
+            if (objKind == ExprKind::LIST) {
+                return ExprKind::INT;  // List elements stored as int64_t
+            }
+            
+            // For dictionaries and unknown collections, default to int64_t
+            // since Orion stores most values as int64_t internally
+            // This is safer than guessing based on key type
+            return ExprKind::INT;
+        }
         if (auto binExpr = dynamic_cast<BinaryExpression*>(expr)) {
             ExprKind leftKind = inferExprKind(binExpr->left.get());
             ExprKind rightKind = inferExprKind(binExpr->right.get());
@@ -248,7 +263,10 @@ public:
             "list_append", "list_pop", "list_insert", "list_concat", "list_repeat",
             "list_extend", "orion_input", "orion_input_prompt",
             "int_to_string", "float_to_string", "bool_to_string", 
-            "string_to_string", "string_concat_parts"
+            "string_to_string", "string_concat_parts",
+            "dict_new", "dict_get", "dict_get_string", "dict_set", "dict_set_int", "dict_set_string",
+            "dict_has_key", "dict_has_key_string", "dict_remove", "dict_free",
+            "collection_get", "collection_get_string", "collection_set", "collection_set_string"
         };
         
         for (const auto& symbol : externSymbols) {
@@ -1300,6 +1318,46 @@ public:
                     }
                 }
             }
+        } else if (node.name == "print") {
+            // Handle print function with automatic type conversion
+            if (node.arguments.size() != 1) {
+                throw std::runtime_error("print() function requires exactly 1 argument");
+            }
+            assembly << "    # print() function call with type conversion\n";
+            
+            // Evaluate the argument
+            node.arguments[0]->accept(*this);
+            
+            // Determine the type of the argument and convert to string if needed
+            auto argExpr = node.arguments[0].get();
+            ExprKind argKind = inferExprKind(argExpr);
+            
+            if (argKind == ExprKind::STRING) {
+                // Already a string - can call print directly
+                assembly << "    mov %rax, %rdi  # string argument\n";
+                assembly << "    call print\n";
+            } else if (argKind == ExprKind::INT) {
+                // Convert integer to string first
+                assembly << "    mov %rax, %rdi  # int argument\n";
+                assembly << "    call int_to_string\n";
+                assembly << "    mov %rax, %rdi  # converted string\n";
+                assembly << "    call print\n";
+            } else if (argKind == ExprKind::FLOAT) {
+                // Convert float to string first - float value is already in %xmm0
+                assembly << "    call float_to_string\n";
+                assembly << "    mov %rax, %rdi  # converted string\n";
+                assembly << "    call print\n";
+            } else if (argKind == ExprKind::BOOL) {
+                // Convert bool to string first
+                assembly << "    mov %rax, %rdi  # bool argument\n";
+                assembly << "    call bool_to_string\n";
+                assembly << "    mov %rax, %rdi  # converted string\n";
+                assembly << "    call print\n";
+            } else {
+                // Unknown type - assume it's already a string or pointer to string
+                assembly << "    mov %rax, %rdi  # unknown type argument\n";
+                assembly << "    call print\n";
+            }
         } else {
             // Handle user-defined function calls - generate proper assembly
             assembly << "    # User-defined function call: " << node.name << "\n";
@@ -2146,25 +2204,39 @@ public:
     }
 
     void visit(IndexAssignment& node) override {
-        assembly << "    # Index assignment: list[index] = value\n";
+        assembly << "    # Type-aware index assignment supporting both lists and dictionaries\n";
         
-        // Evaluate the list expression
+        // Check if index/key is a string literal
+        ExprKind indexKind = inferExprKind(node.index.get());
+        bool isStringKey = (indexKind == ExprKind::STRING);
+        
+        // Evaluate the object (list or dict)
         node.object->accept(*this);
-        assembly << "    mov %rax, %r12  # Save list pointer in %r12\n";
+        assembly << "    mov %rax, %r12  # Save object pointer in %r12\n";
         
-        // Evaluate the index expression
+        // Evaluate the index/key expression
         node.index->accept(*this);
-        assembly << "    mov %rax, %r13  # Save index in %r13\n";
+        assembly << "    mov %rax, %r13  # Save index/key in %r13\n";
         
         // Evaluate the value expression  
         node.value->accept(*this);
         assembly << "    mov %rax, %rdx  # Value in %rdx (third argument)\n";
         
-        // Call list_set(list, index, value)
-        assembly << "    mov %r12, %rdi  # List pointer as first argument\n";
-        assembly << "    mov %r13, %rsi  # Index as second argument\n";
+        // Set up arguments for function call
+        assembly << "    mov %r12, %rdi  # Object pointer as first argument\n";
+        assembly << "    mov %r13, %rsi  # Index/key as second argument\n";
         assembly << "    # Value already in %rdx as third argument\n";
-        assembly << "    call list_set  # Set list[index] = value\n";
+        
+        // The assignment functions are designed to work with both lists and dicts:
+        // - For lists: both functions will work (list_set ignores key type)
+        // - For dicts: we need to call the appropriate function based on key type
+        // Since we can't easily determine object type at compile time,
+        // we'll use a runtime approach that checks the object type
+        if (isStringKey) {
+            assembly << "    call collection_set_string  # Set element with string key (lists or dicts)\n";
+        } else {
+            assembly << "    call collection_set         # Set element with integer key (lists or dicts)\n";
+        }
     }
 
     // Stub implementations for other visitors
@@ -2589,11 +2661,19 @@ int main(int argc, char* argv[]) {
         // Step 3: Code generation
         orion::SimpleCodeGenerator codegen;
         
-        // Check for Windows target test (for development/testing)
-        if (std::string(filename).find("windows") != std::string::npos) {
-            std::cout << "Generating Windows x86-64 assembly for testing..." << std::endl;
-            codegen = orion::SimpleCodeGenerator(orion::TargetPlatform::WINDOWS_X86_64);
+        // Use build-time platform targeting
+        TargetPlatform targetPlatform = getTargetPlatform();
+        codegen = orion::SimpleCodeGenerator(targetPlatform);
+        
+        // Show which platform we're targeting
+        ABIConfig abiConfig = ABIConfig::getConfig(targetPlatform);
+        std::cout << "Targeting platform: ";
+        switch (targetPlatform) {
+            case TargetPlatform::LINUX_X86_64: std::cout << "Linux x86-64"; break;
+            case TargetPlatform::MACOS_X86_64: std::cout << "macOS x86-64"; break; 
+            case TargetPlatform::WINDOWS_X86_64: std::cout << "Windows x86-64"; break;
         }
+        std::cout << std::endl;
         
         std::string assembly = codegen.generate(*ast);
         

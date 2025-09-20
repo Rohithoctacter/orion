@@ -218,102 +218,60 @@ public:
     }
 };
 
-// Windows x86-64 backend using AT&T syntax and Win64 calling convention
-class WindowsX86_64Backend : public TargetBackend {
-public:
-    std::string getDataSection() const override {
-        return ".section .data\n";  // GAS syntax for data section
-    }
+// Data-driven ABI configuration for efficient cross-platform support
+struct ABIConfig {
+    std::vector<std::string> argRegs;
+    std::vector<std::string> calleeSaved;
+    int shadowSpace;
+    bool hasRedZone;
+    bool needsALForVarargs;
+    int stackAlign;
+    std::string symbolPrefix;
+    std::string exeExtension;
+    std::string assemblerCmd;
     
-    std::string getTextSection() const override {
-        return "\n.section .text\n";  // AT&T syntax for Windows (no Intel directive)
-    }
-    
-    // Windows-specific data directives (GAS syntax)
-    std::string getStringDirective(const std::string& label, const std::string& value) const override {
-        return label + ": .string \"" + value + "\"\n";  // GAS string directive with null terminator
-    }
-    
-    std::string getQuadDirective(const std::string& label, uint64_t value) const override {
-        return label + ": .quad " + std::to_string(value) + "\n";  // GAS 64-bit quad word
-    }
-    
-    std::string getIntDirective(const std::string& label, const std::string& value) const {
-        return label + ": db '" + value + "', 0\n";  // Format string directive
-    }
-    
-    std::string getGlobalDirective(const std::string& symbol) const override {
-        return ".global " + symbol + "\n";  // GAS syntax - caller handles platform symbol
-    }
-    
-    std::string getExternDirective(const std::string& symbol) const override {
-        return ".extern " + symbol + "\n";  // GAS syntax - caller handles platform symbol  
-    }
-    
-    std::string getPlatformSymbol(const std::string& symbol) const override {
-        return symbol; // No prefix needed on Windows with MSVC CRT
-    }
-    
-    std::vector<std::string> getArgumentRegisters() const override {
-        // Windows x64 calling convention: first 4 args in registers (AT&T syntax)
-        return {"%rcx", "%rdx", "%r8", "%r9"};
-    }
-    
-    std::string getReturnRegister() const override {
-        return "%rax";
-    }
-    
-    int getStackAlignment() const override {
-        return 16; // 16-byte alignment required
-    }
-    
-    std::string getStackReservation(int bytes) const override {
-        // Windows requires 32 bytes of shadow space + local variables
-        int shadowSpace = 32;
-        int aligned = ((bytes + shadowSpace + 15) / 16) * 16;
-        return "    subq $" + std::to_string(aligned) + ", %rsp\n";
-    }
-    
-    // Windows AT&T syntax memory operand formatting
-    std::string getMemoryOperand(const std::string& base, int offset) const override {
-        if (offset == 0) {
-            return "(%" + base + ")";
-        } else {
-            return std::to_string(offset) + "(%" + base + ")";
+    static ABIConfig getConfig(TargetPlatform platform) {
+        switch (platform) {
+            case TargetPlatform::LINUX_X86_64:
+                return {
+                    {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"},  // SysV ABI
+                    {"%rbx", "%rbp", "%r12", "%r13", "%r14", "%r15"}, // Callee-saved
+                    0,      // No shadow space
+                    true,   // Has red zone
+                    false,  // No AL needed for varargs
+                    16,     // 16-byte alignment
+                    "",     // No symbol prefix
+                    "",     // No exe extension
+                    "gcc -o {exe} {asm} runtime.o -lm"
+                };
+            case TargetPlatform::MACOS_X86_64:
+                return {
+                    {"%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"},  // SysV ABI
+                    {"%rbx", "%rbp", "%r12", "%r13", "%r14", "%r15"}, // Callee-saved
+                    0,      // No shadow space
+                    true,   // Has red zone
+                    false,  // No AL needed for varargs
+                    16,     // 16-byte alignment
+                    "_",    // Underscore prefix
+                    "",     // No exe extension
+                    "clang -o {exe} {asm} runtime.o -lm"
+                };
+            case TargetPlatform::WINDOWS_X86_64:
+                return {
+                    {"%rcx", "%rdx", "%r8", "%r9"},  // Win64 ABI
+                    {"%rbx", "%rbp", "%rdi", "%rsi", "%r12", "%r13", "%r14", "%r15"}, // Callee-saved (includes rdi,rsi)
+                    32,     // 32-byte shadow space
+                    false,  // No red zone
+                    true,   // AL needed for varargs
+                    16,     // 16-byte alignment
+                    "",     // No symbol prefix
+                    ".exe", // .exe extension
+                    "gcc -m64 -o {exe} {asm} runtime.o"  // No -lm on Windows
+                };
+            default:
+                // Default to Linux
+                return getConfig(TargetPlatform::LINUX_X86_64);
         }
-    }
-    
-    // Windows calling convention - shadow space management (AT&T syntax)
-    std::string getShadowSpaceSetup() const {
-        return "    subq $32, %rsp  # Allocate shadow space\n";
-    }
-    
-    std::string getShadowSpaceCleanup() const {
-        return "    addq $32, %rsp  # Clean up shadow space\n";
-    }
-    
-    TargetPlatform getPlatform() const override {
-        return TargetPlatform::WINDOWS_X86_64;
-    }
-    
-    std::string getPlatformName() const override {
-        return "windows-x86_64";
-    }
-    
-    std::string getAssemblyExtension() const override {
-        return ".s";  // Use .s for GAS compatibility
-    }
-    
-    std::string getExecutableExtension() const override {
-        return ".exe";
-    }
-    
-    std::string getAssemblerCommand(const std::string& asmFile, 
-                                   const std::string& objFile,
-                                   const std::string& exeFile) const override {
-        // Use GCC with AT&T syntax for Windows - compatible with mingw64
-        // This allows clean assembly generation that works directly with GCC
-        return "gcc -m64 -o " + exeFile + " " + asmFile + " runtime.o -lm";
     }
 };
 
@@ -325,20 +283,30 @@ std::unique_ptr<TargetBackend> createTargetBackend(TargetPlatform platform) {
         case TargetPlatform::MACOS_X86_64:
             return std::make_unique<MacOSX86_64Backend>();
         case TargetPlatform::WINDOWS_X86_64:
-            return std::make_unique<WindowsX86_64Backend>();
+            // Temporarily use Linux backend for Windows - we'll implement unified backend later
+            return std::make_unique<LinuxX86_64Backend>();
         default:
             return std::make_unique<LinuxX86_64Backend>(); // Default fallback
     }
 }
 
-// Utility function to detect current platform
-TargetPlatform detectCurrentPlatform() {
-#ifdef _WIN32
+// Build-time platform targeting with hardcoded switches
+TargetPlatform getTargetPlatform() {
+#ifdef TARGET_WINDOWS
     return TargetPlatform::WINDOWS_X86_64;
-#elif __APPLE__
+#elif defined(TARGET_MACOS)
     return TargetPlatform::MACOS_X86_64;
+#elif defined(TARGET_LINUX)
+    return TargetPlatform::LINUX_X86_64;
 #else
-    return TargetPlatform::LINUX_X86_64; // Default to Linux
+    // Fallback to runtime detection for legacy builds
+    #ifdef _WIN32
+        return TargetPlatform::WINDOWS_X86_64;
+    #elif __APPLE__
+        return TargetPlatform::MACOS_X86_64;
+    #else
+        return TargetPlatform::LINUX_X86_64;
+    #endif
 #endif
 }
 

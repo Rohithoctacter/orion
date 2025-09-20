@@ -291,9 +291,8 @@ public:
         
         // Return 0 - platform specific register syntax
         fullAssembly << emitMov(getImmediate("0"), getRegisterName("rax"));
-        // Calculate the same stack restoration amount as was reserved
-        int shadowSpace = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) ? 32 : 0;
-        int aligned = ((64 + shadowSpace + 15) / 16) * 16;
+        // Calculate stack restoration amount (simplified)
+        int aligned = ((64 + 15) / 16) * 16;
         fullAssembly << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack pointer
         fullAssembly << emitPop("rbp");
         fullAssembly << "    ret\n";
@@ -376,28 +375,7 @@ public:
     
     // Helper function to wrap external function calls with Windows shadow space
     std::string emitExternalCall(const std::string& functionName) {
-        std::ostringstream result;
-        bool isWindows = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64);
-        
-        if (isWindows) {
-            // Windows requires shadow space for external calls
-            auto windowsBackend = dynamic_cast<const WindowsX86_64Backend*>(backend.get());
-            if (windowsBackend) {
-                result << windowsBackend->getShadowSpaceSetup();
-            }
-        }
-        
-        result << "    call " << backend->getPlatformSymbol(functionName) << "\n";
-        
-        if (isWindows) {
-            // Cleanup shadow space
-            auto windowsBackend = dynamic_cast<const WindowsX86_64Backend*>(backend.get());
-            if (windowsBackend) {
-                result << windowsBackend->getShadowSpaceCleanup();
-            }
-        }
-        
-        return result.str();
+        return "    call " + backend->getPlatformSymbol(functionName) + "\n";
     }
     
     void visit(Program& node) override {
@@ -516,9 +494,8 @@ public:
                 assembly << currentAssembly;
                 
                 // Function epilogue - user functions should return to caller
-                // Calculate the same stack restoration amount as was reserved  
-                int shadowSpace = (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) ? 32 : 0;
-                int aligned = ((64 + shadowSpace + 15) / 16) * 16;
+                // Calculate stack restoration amount (simplified)
+                int aligned = ((64 + 15) / 16) * 16;
                 funcsAsm << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack space
                 funcsAsm << emitPop("rbp");
                 funcsAsm << "    ret\n";
@@ -2661,11 +2638,22 @@ int main(int argc, char* argv[]) {
         // Step 3: Code generation
         orion::SimpleCodeGenerator codegen;
         
-        // Check for Windows target test (for development/testing)
-        if (std::string(filename).find("windows") != std::string::npos) {
-            std::cout << "Generating Windows x86-64 assembly for testing..." << std::endl;
-            codegen = orion::SimpleCodeGenerator(orion::TargetPlatform::WINDOWS_X86_64);
-        }
+        // Use build-time platform targeting (temporarily use Linux until we fix compilation)
+        orion::TargetPlatform targetPlatform = orion::TargetPlatform::LINUX_X86_64;
+        
+        // Build-time platform detection
+        #ifdef TARGET_WINDOWS
+            targetPlatform = orion::TargetPlatform::WINDOWS_X86_64;
+            std::cout << "Targeting platform: Windows x86-64" << std::endl;
+        #elif defined(TARGET_MACOS)
+            targetPlatform = orion::TargetPlatform::MACOS_X86_64;
+            std::cout << "Targeting platform: macOS x86-64" << std::endl;
+        #else
+            targetPlatform = orion::TargetPlatform::LINUX_X86_64;
+            std::cout << "Targeting platform: Linux x86-64" << std::endl;
+        #endif
+        
+        codegen = orion::SimpleCodeGenerator(targetPlatform);
         
         std::string assembly = codegen.generate(*ast);
         
