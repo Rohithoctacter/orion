@@ -195,7 +195,7 @@ public:
             backend = std::move(targetBackend);
         } else {
             // Default to current platform detection
-            backend = createTargetBackend(detectCurrentPlatform());
+            backend = createTargetBackend(getTargetPlatform());
         }
     }
     
@@ -373,9 +373,23 @@ public:
         return getRegisterName(reg);
     }
     
-    // Helper function to wrap external function calls with Windows shadow space
+    // Helper function to wrap external function calls with proper ABI handling
     std::string emitExternalCall(const std::string& functionName) {
-        return "    call " + backend->getPlatformSymbol(functionName) + "\n";
+        std::ostringstream result;
+        
+        // Check if this is our unified backend that supports shadow space
+        auto unifiedBackend = dynamic_cast<const orion::UnifiedX86_64Backend*>(backend.get());
+        if (unifiedBackend && unifiedBackend->getABI().shadowSpace > 0) {
+            result << unifiedBackend->getShadowSpaceSetup();
+        }
+        
+        result << "    call " << backend->getPlatformSymbol(functionName) << "\n";
+        
+        if (unifiedBackend && unifiedBackend->getABI().shadowSpace > 0) {
+            result << unifiedBackend->getShadowSpaceCleanup();
+        }
+        
+        return result.str();
     }
     
     void visit(Program& node) override {
@@ -2638,22 +2652,24 @@ int main(int argc, char* argv[]) {
         // Step 3: Code generation
         orion::SimpleCodeGenerator codegen;
         
-        // Use build-time platform targeting (temporarily use Linux until we fix compilation)
-        orion::TargetPlatform targetPlatform = orion::TargetPlatform::LINUX_X86_64;
-        
-        // Build-time platform detection
-        #ifdef TARGET_WINDOWS
-            targetPlatform = orion::TargetPlatform::WINDOWS_X86_64;
-            std::cout << "Targeting platform: Windows x86-64" << std::endl;
-        #elif defined(TARGET_MACOS)
-            targetPlatform = orion::TargetPlatform::MACOS_X86_64;
-            std::cout << "Targeting platform: macOS x86-64" << std::endl;
-        #else
-            targetPlatform = orion::TargetPlatform::LINUX_X86_64;
-            std::cout << "Targeting platform: Linux x86-64" << std::endl;
-        #endif
-        
+        // Use build-time platform targeting
+        orion::TargetPlatform targetPlatform = orion::getTargetPlatform();
         codegen = orion::SimpleCodeGenerator(targetPlatform);
+        
+        // Show which platform we're targeting
+        std::cout << "Targeting platform: ";
+        switch (targetPlatform) {
+            case orion::TargetPlatform::LINUX_X86_64: 
+                std::cout << "Linux x86-64"; 
+                break;
+            case orion::TargetPlatform::MACOS_X86_64: 
+                std::cout << "macOS x86-64"; 
+                break; 
+            case orion::TargetPlatform::WINDOWS_X86_64: 
+                std::cout << "Windows x86-64"; 
+                break;
+        }
+        std::cout << std::endl;
         
         std::string assembly = codegen.generate(*ast);
         
