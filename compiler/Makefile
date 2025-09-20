@@ -33,21 +33,21 @@ ALL_OBJECTS = $(OBJECTS) $(C_OBJECTS)
 all: $(TARGET)
 
 $(TARGET): $(ALL_OBJECTS)
-        $(CXX) $(ALL_OBJECTS) -o $(TARGET) $(LDFLAGS)
+	$(CXX) $(ALL_OBJECTS) -o $(TARGET) $(LDFLAGS)
 
 %.o: %.cpp
-        $(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 runtime.o: runtime.c
-        gcc $(CFLAGS) -c runtime.c -o runtime.o
+	gcc $(CFLAGS) -c runtime.c -o runtime.o
 
 clean:
-        rm -f *.o orion orion-windows orion-linux orion-macos
+	rm -f *.o orion orion-windows orion-linux orion-macos
 
 windows:
-        $(MAKE) FORCE_TARGET_WINDOWS=1 clean $(TARGET)
+	$(MAKE) FORCE_TARGET_WINDOWS=1 clean $(TARGET)
 
 linux:
-        $(MAKE) FORCE_TARGET_LINUX=1 clean $(TARGET)
+	$(MAKE) FORCE_TARGET_LINUX=1 clean $(TARGET)
 
 .PHONY: all clean windows linux
