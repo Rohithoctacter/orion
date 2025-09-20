@@ -5,10 +5,12 @@ LDFLAGS = -lm
 TARGET = orion
 
 ifdef FORCE_TARGET_WINDOWS
+CXX = x86_64-w64-mingw32-g++
+CC = x86_64-w64-mingw32-gcc
 CXXFLAGS += -DTARGET_WINDOWS
 CFLAGS += -DTARGET_WINDOWS
 LDFLAGS = 
-TARGET = orion-windows
+TARGET = orion-windows.exe
 endif
 
 ifdef FORCE_TARGET_LINUX
@@ -39,13 +41,14 @@ $(TARGET): $(ALL_OBJECTS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 runtime.o: runtime.c
-	gcc $(CFLAGS) -c runtime.c -o runtime.o
+	$(CC) $(CFLAGS) -c runtime.c -o runtime.o
 
 clean:
-	rm -f *.o orion orion-windows orion-linux orion-macos
+	rm -f *.o orion orion-windows orion-windows.exe orion-linux orion-macos
 
 windows:
-	$(MAKE) FORCE_TARGET_WINDOWS=1 clean $(TARGET)
+	$(MAKE) FORCE_TARGET_WINDOWS=1 clean
+	$(MAKE) FORCE_TARGET_WINDOWS=1
 
 linux:
 	$(MAKE) FORCE_TARGET_LINUX=1 clean $(TARGET)

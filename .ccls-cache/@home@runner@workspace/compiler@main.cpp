@@ -269,6 +269,11 @@ public:
             "collection_get", "collection_get_string", "collection_set", "collection_set_string"
         };
         
+        // Add Windows-specific runtime functions when targeting Windows
+        if (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) {
+            externSymbols.push_back("print_windows");
+        }
+        
         for (const auto& symbol : externSymbols) {
             fullAssembly << backend->getExternDirective(backend->getPlatformSymbol(symbol));
         }
@@ -291,8 +296,13 @@ public:
         
         // Return 0 - platform specific register syntax
         fullAssembly << emitMov(getImmediate("0"), getRegisterName("rax"));
-        // Calculate stack restoration amount (simplified)
-        int aligned = ((64 + 15) / 16) * 16;
+        // Calculate stack restoration amount - must match what getStackReservation allocated
+        auto unifiedBackend = dynamic_cast<const orion::UnifiedX86_64Backend*>(backend.get());
+        int totalBytes = 64;
+        if (unifiedBackend) {
+            totalBytes += unifiedBackend->getABI().shadowSpace;  // Add shadow space for Windows
+        }
+        int aligned = ((totalBytes + 15) / 16) * 16;
         fullAssembly << emitAdd(getImmediate(std::to_string(aligned)), getRegisterName("rsp"));  // Restore stack pointer
         fullAssembly << emitPop("rbp");
         fullAssembly << "    ret\n";
@@ -1323,31 +1333,56 @@ public:
             auto argExpr = node.arguments[0].get();
             ExprKind argKind = inferExprKind(argExpr);
             
+            // Get platform-specific calling convention registers
+            auto argRegs = backend->getArgumentRegisters();
+            std::string firstArgReg = argRegs[0];
+            
             if (argKind == ExprKind::STRING) {
-                // Already a string - can call print directly
-                assembly << "    mov %rax, %rdi  # string argument\n";
-                assembly << "    call print\n";
+                // Already a string - can call print directly  
+                assembly << "    mov %rax, " << firstArgReg << "  # string argument\n";
+                // For Windows testing on Linux, use calling convention adapter
+                if (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) {
+                    assembly << emitExternalCall("print_windows");
+                } else {
+                    assembly << emitExternalCall("print");
+                }
             } else if (argKind == ExprKind::INT) {
                 // Convert integer to string first
-                assembly << "    mov %rax, %rdi  # int argument\n";
-                assembly << "    call int_to_string\n";
-                assembly << "    mov %rax, %rdi  # converted string\n";
-                assembly << "    call print\n";
+                assembly << "    mov %rax, " << firstArgReg << "  # int argument\n";
+                assembly << emitExternalCall("int_to_string");
+                assembly << "    mov %rax, " << firstArgReg << "  # converted string\n";
+                if (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) {
+                    assembly << emitExternalCall("print_windows");
+                } else {
+                    assembly << emitExternalCall("print");
+                }
             } else if (argKind == ExprKind::FLOAT) {
                 // Convert float to string first - float value is already in %xmm0
-                assembly << "    call float_to_string\n";
-                assembly << "    mov %rax, %rdi  # converted string\n";
-                assembly << "    call print\n";
+                assembly << emitExternalCall("float_to_string");
+                assembly << "    mov %rax, " << firstArgReg << "  # converted string\n";
+                if (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) {
+                    assembly << emitExternalCall("print_windows");
+                } else {
+                    assembly << emitExternalCall("print");
+                }
             } else if (argKind == ExprKind::BOOL) {
                 // Convert bool to string first
-                assembly << "    mov %rax, %rdi  # bool argument\n";
-                assembly << "    call bool_to_string\n";
-                assembly << "    mov %rax, %rdi  # converted string\n";
-                assembly << "    call print\n";
+                assembly << "    mov %rax, " << firstArgReg << "  # bool argument\n";
+                assembly << emitExternalCall("bool_to_string");
+                assembly << "    mov %rax, " << firstArgReg << "  # converted string\n";
+                if (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) {
+                    assembly << emitExternalCall("print_windows");
+                } else {
+                    assembly << emitExternalCall("print");
+                }
             } else {
                 // Unknown type - assume it's already a string or pointer to string
-                assembly << "    mov %rax, %rdi  # unknown type argument\n";
-                assembly << "    call print\n";
+                assembly << "    mov %rax, " << firstArgReg << "  # unknown type argument\n";
+                if (backend->getPlatform() == TargetPlatform::WINDOWS_X86_64) {
+                    assembly << emitExternalCall("print_windows");
+                } else {
+                    assembly << emitExternalCall("print");
+                }
             }
         } else {
             // Handle user-defined function calls - generate proper assembly

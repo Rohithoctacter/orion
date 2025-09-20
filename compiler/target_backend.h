@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace orion {
 
@@ -266,7 +267,7 @@ struct ABIConfig {
                     16,     // 16-byte alignment
                     "",     // No symbol prefix
                     ".exe", // .exe extension
-                    "gcc -m64 -o {exe} {asm} runtime.o"  // No -lm on Windows
+                    "x86_64-w64-mingw32-gcc -o {exe} {asm} runtime.o"  // No -lm on Windows
                 };
             default:
                 // Default to Linux
