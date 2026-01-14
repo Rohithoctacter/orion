@@ -1,0 +1,13 @@
+fn make_list() {
+    numbers = [1, 2, 3]
+    out("Created list in function")
+    return numbers
+}
+
+fn main() {
+    out("Testing ownership transfer")
+    mylist = make_list()
+    out("Got list from function - should still be valid")
+}
+
+main()

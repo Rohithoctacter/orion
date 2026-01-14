@@ -1,0 +1,15 @@
+# Hello World example in Orion
+# Demonstrates basic function definition and string output
+
+fn main() {
+    out("Hello, Orion World!")
+    out("Welcome to the fast and readable programming language!")
+    
+    # Variable declaration with automatic type detection
+    name = "Developer"
+    out("Hello, " + name + "!")
+    
+    # All variables have automatic type detection
+    year = 2025
+    out("Current year: " + str(year))
+}

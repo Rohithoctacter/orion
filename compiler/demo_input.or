@@ -1,0 +1,30 @@
+fn main() {
+    out("=== Orion Input Function Demo ===")
+    
+    # Test input() with prompt
+    name = input("Enter your name: ")
+    out("Hello")
+    out(name)
+    
+    # Test input() without prompt
+    out("Please enter your age:")
+    age = input()
+    out("You entered:")
+    out(age)
+    
+    # Test multiple inputs
+    favorite_color = input("What's your favorite color? ")
+    favorite_food = input("What's your favorite food? ")
+    
+    out("Summary:")
+    out("Name:")
+    out(name)
+    out("Age:")
+    out(age)
+    out("Favorite color:")
+    out(favorite_color)
+    out("Favorite food:")
+    out(favorite_food)
+}
+
+main()

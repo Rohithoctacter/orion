@@ -1,0 +1,114 @@
+# Fibonacci sequence example in Orion
+# Demonstrates recursion, loops, and automatic type detection
+
+# Recursive fibonacci function (single-line syntax)
+fibonacci_recursive(n) => n <= 1 ? n : fibonacci_recursive(n - 1) + fibonacci_recursive(n - 2)
+
+# Iterative fibonacci function (block syntax)
+fibonacci_iterative(n) {
+    if n <= 1 {
+        return n
+    }
+    
+    a = 0
+    b = 1
+    
+    for i in range(2, n + 1) {
+        temp = a + b
+        a = b
+        b = temp
+    }
+    
+    return b
+}
+
+# Function to print fibonacci sequence
+print_fibonacci(count, use_recursive) {
+    out("Fibonacci sequence (" + (use_recursive ? "recursive" : "iterative") + "):")
+    
+    for i in range(count) {
+        result = 0  # Automatic type detection
+        
+        if use_recursive {
+            result = fibonacci_recursive(i)
+        } else {
+            result = fibonacci_iterative(i)
+        }
+        
+        out("F(" + str(i) + ") = " + str(result))
+    }
+}
+
+# Performance comparison
+time_fibonacci(n) {
+    out("\nPerformance comparison for F(" + str(n) + "):")
+    
+    # Time iterative version
+    out("Calculating iterative...")
+    result_iter = fibonacci_iterative(n)
+    out("Iterative result: " + str(result_iter))
+    
+    # Time recursive version (only for small n to avoid long waits)
+    if n <= 35 {
+        out("Calculating recursive...")
+        result_rec = fibonacci_recursive(n)
+        out("Recursive result: " + str(result_rec))
+    } else {
+        out("Skipping recursive version (too slow for n > 35)")
+    }
+}
+
+# Fibonacci with memoization
+struct FibCache {
+    cache[100]  # Simple fixed-size cache
+    size
+}
+
+fibonacci_memoized(n, cache) {
+    if n <= 1 {
+        return n
+    }
+    
+    # Check cache
+    if n < cache.size && cache.cache[n] != -1 {
+        return cache.cache[n]
+    }
+    
+    # Calculate and cache
+    result = fibonacci_memoized(n - 1, cache) + fibonacci_memoized(n - 2, cache)
+    
+    if n < 100 {
+        cache.cache[n] = result
+        if n >= cache.size {
+            cache.size = n + 1
+        }
+    }
+    
+    return result
+}
+
+# Initialize cache
+init_cache() {
+    cache = {}
+    cache.size = 0
+    
+    # Initialize cache with -1 (uncomputed)
+    for i in range(100) {
+        cache.cache[i] = -1
+    }
+    
+    return cache
+}
+
+# Main function
+fn main() {
+    out("=== Orion Fibonacci Examples ===")
+    
+    # Basic examples
+    print_fibonacci(10, false)  # Iterative
+    out("")
+    print_fibonacci(10, true)   # Recursive
+    
+    # Performance comparison
+    time_fibonacci(30)
+}

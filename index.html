@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orion Programming Language - Online Compiler</title>
+    <link rel="icon" type="image/png" href="/static/images/favicon.png" media="(prefers-color-scheme: dark)">
+    <link rel="icon" type="image/png" href="/static/images/favicon-light.png" media="(prefers-color-scheme: light)">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="container-fluid">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="brand">
+                        <img src="/static/images/logo.png" alt="Orion Logo" height="30" class="me-1">
+                        <span class="brand-subtitle">Compiler</span>
+                    </div>
+                    <div class="header-actions">
+                        <span class="version-badge">v1.0.0</span>
+                        <button class="btn btn-outline-light btn-sm" onclick="showFeatures()">
+                            <i data-feather="help-circle"></i>
+                            Help
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="app-main">
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <div class="examples-dropdown">
+                        <button class="btn btn-subtle btn-sm dropdown-toggle" onclick="toggleExamplesDropdown()" title="Load example code">
+                            <i data-feather="folder"></i>
+                            Examples
+                        </button>
+                        <div class="dropdown-menu" id="examplesDropdown">
+                            <button class="dropdown-item" onclick="loadExample('hello')">
+                                <i data-feather="file-text"></i>
+                                <div class="dropdown-item-content">
+                                    <span class="dropdown-item-title">Hello World</span>
+                                    <span class="dropdown-item-desc">Basic output example</span>
+                                </div>
+                            </button>
+                            <button class="dropdown-item" onclick="loadExample('fibonacci')">
+                                <i data-feather="trending-up"></i>
+                                <div class="dropdown-item-content">
+                                    <span class="dropdown-item-title">Fibonacci</span>
+                                    <span class="dropdown-item-desc">Recursive function demo</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-subtle btn-sm" onclick="clearEditor()" title="Clear editor">
+                        <i data-feather="file"></i>
+                        New
+                    </button>
+                </div>
+                
+                <div class="toolbar-right">
+                    <button class="btn btn-subtle btn-sm" onclick="checkSyntax()" title="Check syntax (Ctrl+Shift+C)">
+                        <i data-feather="check-circle"></i>
+                        Check
+                    </button>
+                    <button class="btn btn-subtle btn-sm" onclick="showAST()" title="Show Abstract Syntax Tree">
+                        <i data-feather="git-branch"></i>
+                        AST
+                    </button>
+                    <div class="toolbar-divider"></div>
+                    <button id="compileBtn" class="btn btn-primary btn-run" onclick="compileCode()" title="Compile and run (Ctrl+Enter)">
+                        <i data-feather="play"></i>
+                        <span class="btn-text">Run</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Editor and Output -->
+            <div class="workspace">
+                <!-- Editor Panel -->
+                <div class="editor-panel">
+                    <div class="panel-header">
+                        <h6><i data-feather="edit-3"></i> Code Editor</h6>
+                        <div class="panel-info">
+                            <small class="text-muted">Orion • Native Compiled Language</small>
+                        </div>
+                    </div>
+                    <div class="editor-container">
+                        <div class="editor-wrapper">
+                            <div class="line-numbers" id="lineNumbers"></div>
+                            <textarea id="codeEditor" placeholder="Write your Orion code here..." spellcheck="false">// Welcome to Orion Programming Language!
+// A pure compiled language - fast as C, readable as Python
+
+fn main() {
+    // Try changing these values and running the code!
+    a = 5
+    out(a)
+    
+    name = "Orion"
+    out("Hello, " + name + " World!")
+    out("Compiled to native machine code!")
+}</textarea>
+                        </div>
+                        <div class="editor-footer-info">
+                            <div class="editor-stats">
+                                <span class="stat-item" id="lineCount">6 lines</span>
+                                <span class="stat-item" id="charCount">156 chars</span>
+                                <span class="stat-item">Orion</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Output Panel -->
+                <div class="output-panel">
+                    <div class="panel-header">
+                        <h6><i data-feather="terminal"></i> Output</h6>
+                        <div class="panel-actions">
+                            <div class="output-status" id="outputStatus">
+                                <span class="status-dot status-ready"></span>
+                                <span class="status-text">Ready</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="clearOutput()">
+                                <i data-feather="x"></i>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="output-container">
+                        <pre id="outputArea">Ready to compile Orion code...
+
+Use Ctrl+Enter to compile and run your code quickly.</pre>
+                    </div>
+                    
+                    <!-- Interactive Input Panel (hidden by default) -->
+                    <div class="input-panel" id="inputPanel" style="display: none;">
+                        <div class="input-header">
+                            <h6><i data-feather="edit-3"></i> Interactive Input</h6>
+                            <small class="text-muted">Your program needs input data. Enter values separated by newlines:</small>
+                        </div>
+                        <div class="input-container">
+                            <textarea id="inputData" placeholder="Enter input values here...
+Example:
+John Doe
+25
+yes" rows="4" class="form-control"></textarea>
+                        </div>
+                        <div class="input-actions mt-2">
+                            <button class="btn btn-primary btn-sm" onclick="runWithInput()">
+                                <i data-feather="play"></i> Run with Input
+                            </button>
+                            <button class="btn btn-secondary btn-sm" onclick="hideInputPanel()">
+                                <i data-feather="x"></i> Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Modal -->
+        <div class="modal fade" id="helpModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Orion Language Reference</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6><i data-feather="settings"></i> Variable Declarations</h6>
+                                <pre><code class="language-orion">a = 5
+int a = 5
+a int = 5
+a = int 5</code></pre>
+                                
+                                <h6><i data-feather="code"></i> Functions</h6>
+                                <pre><code class="language-orion">add(x int, y int) -> int { return x + y }
+// or single-line
+add(x int, y int) -> int => x + y</code></pre>
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i data-feather="shuffle"></i> Control Flow</h6>
+                                <pre><code class="language-orion">if x > 0 {
+    print("positive")
+} elif x < 0 {
+    print("negative")
+} else {
+    print("zero")
+}</code></pre>
+                                
+                                <h6><i data-feather="box"></i> Structs & Enums</h6>
+                                <pre><code class="language-orion">struct Point {
+    x int
+    y int
+}
+
+enum Color { Red, Green, Blue }</code></pre>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="text-center">
+                            <small class="text-muted">
+                                <i data-feather="command"></i> Shortcuts: Ctrl+Enter to compile, Ctrl+K to clear output
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="script.js?v=3"></script>
+</body>
+</html>

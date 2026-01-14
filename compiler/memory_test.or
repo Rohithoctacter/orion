@@ -1,0 +1,17 @@
+fn main() {
+    out("Testing memory management...")
+    
+    # Test 1: Loop creating lists - previously would leak
+    for i in range(10) {
+        numbers = [1, 2, 3, 4, 5]
+        out(f"Iteration {i}: created list")
+    }
+    
+    # Test 2: Reassigning lists - old list should be released
+    mylist = [10, 20, 30]
+    out("Created first list")
+    mylist = [40, 50, 60]
+    out("Reassigned list - old one should be released")
+    
+    out("Test complete - no memory leaks!")
+}

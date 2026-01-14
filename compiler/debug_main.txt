@@ -1,0 +1,2 @@
+/nix/store/mkvc0lnnpmi604rqsjdlv1pmhr638nbd-binutils-2.44/bin/ld: warning: /tmp/ccRL9ob7.o: missing .note.GNU-stack section implies executable stack
+/nix/store/mkvc0lnnpmi604rqsjdlv1pmhr638nbd-binutils-2.44/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker

@@ -1,0 +1,29 @@
+fn main() {
+    # Test just the working features first
+    numbers = [10, 20, 30]
+    out("Length:")
+    out(len(numbers))
+    
+    append(numbers, 40)
+    out("After append:")
+    out(len(numbers))
+    
+    # Test negative indexing
+    out("Last element:")
+    out(numbers[-1])
+    
+    # Test concatenation
+    more = [50, 60]
+    combined = numbers + more
+    out("Combined length:")
+    out(len(combined))
+    
+    # Test repetition
+    repeated = 2 * [100]
+    out("Repeated length:")
+    out(len(repeated))
+    
+    out("Core features working!")
+}
+
+main()

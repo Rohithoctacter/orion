@@ -1,0 +1,10 @@
+fn make_list():
+    numbers = [1, 2, 3]
+    return numbers
+
+fn main():
+    out("Testing")
+    mylist = make_list()
+    out("Done")
+    
+main()

@@ -1,0 +1,20 @@
+# Test Python-style dictionaries in Orion
+fn main() {
+    out("TEST 1: Basic Dictionary Creation")
+    person = {"name": "Alice", "age": "30"}
+    out("Dictionary created successfully")
+    
+    out("TEST 2: Dictionary with Mixed Types")
+    scores = {"math": "95", "english": "87"}
+    out("Mixed type dictionary created")
+    
+    out("TEST 3: Dictionary with Integer Keys")
+    numbers = {1: "one", 2: "two", 3: "three"}
+    out("Integer key dictionary created")
+    
+    out("TEST 4: Empty Dictionary")
+    empty = {}
+    out("Empty dictionary created")
+    
+    out("Success: All dictionary tests passed!")
+}

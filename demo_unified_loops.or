@@ -1,0 +1,54 @@
+# Demo of Unified Python-style For Loops in Orion
+# Shows the new range() function and for-in syntax
+
+fn main() {
+    out("=== Orion Unified For Loop Demo ===")
+    
+    # Basic range(n) - count from 0 to n-1
+    out("Basic counting with range(5):")
+    for i in range(5) {
+        out("Count: " + str(i))
+    }
+    
+    # Range with start and end
+    out("\nRange with start and end range(3, 8):")
+    for i in range(3, 8) {
+        out("Value: " + str(i))
+    }
+    
+    # Range with step
+    out("\nRange with step range(0, 10, 2):")
+    for i in range(0, 10, 2) {
+        out("Even: " + str(i))
+    }
+    
+    # Break statement
+    out("\nUsing break (stop at 3):")
+    for i in range(10) {
+        if i == 3 {
+            break
+        }
+        out("Before break: " + str(i))
+    }
+    
+    # Continue statement
+    out("\nUsing continue (skip even numbers):")
+    for i in range(8) {
+        if i % 2 == 0 {
+            continue
+        }
+        out("Odd number: " + str(i))
+    }
+    
+    # Pass statement
+    out("\nUsing pass (placeholder):")
+    for i in range(5) {
+        if i == 2 {
+            pass  # Do nothing
+        } else {
+            out("Not 2: " + str(i))
+        }
+    }
+    
+    out("\n=== Demo Complete ===")
+}

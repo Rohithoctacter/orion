@@ -1,0 +1,154 @@
+// Orion Standard Library - Core Module
+// This file contains fundamental functions and types
+
+// Basic I/O functions
+print(message string) -> void {
+    // Native implementation would handle actual printing
+    // This is a placeholder for the standard library
+}
+
+println(message string) -> void {
+    print(message + "\n")
+}
+
+// Type conversion functions
+str(value int) -> string {
+    // Convert integer to string
+    // Native implementation
+}
+
+str(value float) -> string {
+    // Convert float to string
+    // Native implementation
+}
+
+int(value string) -> int {
+    // Convert string to integer
+    // Native implementation with error handling
+}
+
+float(value string) -> float {
+    // Convert string to float
+    // Native implementation
+}
+
+// Mathematical functions
+abs(x int) -> int {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+abs(x float) -> float {
+    if x < 0.0 {
+        return -x
+    }
+    return x
+}
+
+max(a int, b int) -> int {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+min(a int, b int) -> int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+pow(base int, exponent int) -> int {
+    if exponent == 0 {
+        return 1
+    }
+    
+    result = 1
+    for i = 0; i < exponent; i++ {
+        result = result * base
+    }
+    return result
+}
+
+// String operations
+len(s string) -> int {
+    // Native implementation to get string length
+}
+
+substr(s string, start int, length int) -> string {
+    // Native implementation for substring
+}
+
+// Memory management functions
+alloc(size int) -> void* {
+    // Native implementation for memory allocation
+}
+
+free(ptr void*) -> void {
+    // Native implementation for memory deallocation
+}
+
+// Result type for error handling
+enum Result<T, E> {
+    Ok(T),
+    Error(E)
+}
+
+// Option type for nullable values
+enum Option<T> {
+    Some(T),
+    None
+}
+
+// Basic collections
+struct Array<T> {
+    data T*
+    length int
+    capacity int
+}
+
+// Array operations
+array_new<T>(capacity int) -> Array<T> {
+    arr Array<T>
+    arr.capacity = capacity
+    arr.length = 0
+    arr.data = alloc(capacity * sizeof(T))
+    return arr
+}
+
+array_push<T>(arr Array<T>*, item T) -> void {
+    if arr.length >= arr.capacity {
+        // Need to resize - simplified implementation
+        return
+    }
+    arr.data[arr.length] = item
+    arr.length++
+}
+
+array_get<T>(arr Array<T>, index int) -> Option<T> {
+    if index < 0 || index >= arr.length {
+        return Option<T>::None
+    }
+    return Option<T>::Some(arr.data[index])
+}
+
+// Utility functions
+assert(condition bool, message string) -> void {
+    if !condition {
+        println("Assertion failed: " + message)
+        // Native implementation would exit the program
+    }
+}
+
+// Random number generation (simplified)
+rand() -> int {
+    // Native implementation for random numbers
+}
+
+rand_range(min int, max int) -> int {
+    range = max - min + 1
+    return min + (rand() % range)
+}

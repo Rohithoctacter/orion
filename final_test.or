@@ -1,0 +1,22 @@
+// Final comprehensive test of function parameter functionality
+fn explicit_typed(x: int, y: string) {
+    print(x)
+    print(y)
+    return x
+}
+
+fn bare_param(z: int) {
+    z
+}
+
+fn mixed_usage(m: int) {
+    print(m)
+    n = m + 5
+    return n
+}
+
+fn main() {
+    explicit_typed(42, "hello")
+    bare_param(100)
+    mixed_usage(7)
+}

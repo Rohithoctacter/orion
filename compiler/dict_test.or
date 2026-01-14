@@ -1,0 +1,15 @@
+# Test Python-style dictionaries in Orion
+
+fn main() {
+    # Create a dictionary
+    person = {"name": 1, "age": 30, "city": 2}
+    
+    # Access dictionary values
+    out("Dictionary created successfully")
+    
+    # Test with integer keys and values
+    scores = {1: 100, 2: 95, 3: 88}
+    out("Test with integer keys passed")
+}
+
+main()

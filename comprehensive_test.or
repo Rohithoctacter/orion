@@ -1,0 +1,27 @@
+// Test all parameter forms and usage contexts
+fn explicit_typed(x: int, y: string) {
+    print(x)
+    print(y)
+    return x
+}
+
+fn mixed_params(a: int, b) {
+    return a + b
+}
+
+fn implicit_param(z) {
+    z
+}
+
+fn multiple_usage(m: int) {
+    print(m)
+    n = m + 5
+    return n
+}
+
+fn main() {
+    explicit_typed(42, "hello")
+    mixed_params(10, 5)
+    implicit_param(100)
+    multiple_usage(7)
+}

@@ -1,0 +1,6 @@
+fn main() {
+    out("Testing str() function")
+    x = 42
+    result = str(x)
+    out(result)
+}

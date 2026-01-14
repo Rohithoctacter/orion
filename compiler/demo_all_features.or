@@ -1,0 +1,44 @@
+fn main() {
+    # Complete test of all list features
+    numbers = [10, 20, 30]
+    out("Original list length:")
+    out(len(numbers))
+    
+    # Append and pop
+    append(numbers, 40)
+    out("After append:")
+    out(len(numbers))
+    
+    last = pop(numbers)
+    out("Popped value:")
+    out(last)
+    
+    # Negative indexing
+    out("Last element:")
+    out(numbers[-1])
+    
+    # Index assignment
+    numbers[0] = 99
+    out("After changing first element:")
+    out(numbers[0])
+    
+    # List concatenation
+    more = [50, 60]
+    combined = numbers + more
+    out("Combined length:")
+    out(len(combined))
+    
+    # List repetition
+    repeated = 3 * [100, 200]
+    out("Repeated length:")
+    out(len(repeated))
+    
+    # Complex expression
+    complex = ([1, 2] + [3, 4]) + [5, 6]
+    out("Complex expression length:")
+    out(len(complex))
+    
+    out("All features working!")
+}
+
+main()
