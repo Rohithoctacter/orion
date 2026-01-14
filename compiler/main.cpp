@@ -2750,7 +2750,7 @@ int main(int argc, char* argv[]) {
         
         // Step 5: Use GCC to assemble and link with runtime (KEEP EXECUTABLE FOR PROOF)
         std::string exeFile = "orion_exec";
-        std::string gccCommand = "gcc -o " + exeFile + " " + asmFile + " runtime.o -lm";
+        std::string gccCommand = "gcc -no-pie -o " + exeFile + " " + asmFile + " runtime.o -lm";
         
         int result = system(gccCommand.c_str());
         if (result != 0) {
