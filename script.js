@@ -87,10 +87,9 @@ function updateOutputStatus(status, message) {
 
 // Example programs
 const examples = {
-    hello: `// Hello World in Orion
+    hello: `# Hello World in Orion
 fn main() {
-    out("Hello, Orion World!")
-    out("Fast as C, readable as Python!")
+    out("Hello World!")
 }`,
     
     fibonacci: `// Fibonacci sequence in Orion
